@@ -7,7 +7,6 @@ import type {
 
 import {
   createMessageId,
-  createRequestId,
 } from "../../lib/ids";
 
 import {
@@ -71,21 +70,15 @@ export class ChatService {
     const input: ChatApiRequest =
       validation.data;
 
-    const requestId =
-      input.requestId ?? createRequestId();
-
-    let conversationId =
-      input.conversationId;
-
     let conversation:
       | ChatConversation
       | null = null;
 
-    if (conversationId) {
+    if (input.conversationId) {
       conversation =
         await this.repository.getConversation(
           userId,
-          conversationId,
+          input.conversationId,
         );
 
       if (!conversation) {
@@ -104,14 +97,11 @@ export class ChatService {
         await this.repository.createConversation(
           userId,
         );
-
-      conversationId =
-        conversation.id;
     }
 
     const message: ChatMessage = {
       id: createMessageId(),
-      conversationId,
+      conversationId: conversation.id,
       role: "user",
       content: input.message,
       createdAt: new Date().toISOString(),
@@ -130,7 +120,8 @@ export class ChatService {
       await this.repository.createMessage(
         userId,
         {
-          conversationId,
+          conversationId:
+            conversation.id,
           role: message.role,
           content: message.content,
           attachments:
@@ -155,13 +146,9 @@ export class ChatService {
     return {
       success: true,
       response: {
-        conversationId,
+        conversationId:
+          conversation.id,
         message: persistedMessage,
-        ...(requestId
-          ? {
-              usage: undefined,
-            }
-          : {}),
       },
     };
   }
