@@ -5,16 +5,7 @@ import type {
   ChatMessage,
 } from "../../types";
 
-import type {
-  ChatRepository,
-} from "./repository";
-
-import type {
-  ChatStore,
-} from "./store";
-
 import {
-  createConversationId,
   createMessageId,
   createRequestId,
 } from "../../lib/ids";
@@ -22,6 +13,14 @@ import {
 import {
   validateChatApiRequest,
 } from "./validation";
+
+import type {
+  ChatRepository,
+} from "./repository";
+
+import type {
+  ChatStore,
+} from "./store";
 
 export interface ChatServiceDependencies {
   readonly repository: ChatRepository;
@@ -101,9 +100,6 @@ export class ChatService {
         };
       }
     } else {
-      conversationId =
-        createConversationId();
-
       conversation =
         await this.repository.createConversation(
           userId,
@@ -130,14 +126,6 @@ export class ChatService {
         : {}),
     };
 
-    this.store.upsertConversation(
-      conversation,
-    );
-
-    this.store.upsertMessage(
-      message,
-    );
-
     const persistedMessage =
       await this.repository.createMessage(
         userId,
@@ -156,6 +144,10 @@ export class ChatService {
         },
       );
 
+    this.store.upsertConversation(
+      conversation,
+    );
+
     this.store.upsertMessage(
       persistedMessage,
     );
@@ -165,6 +157,11 @@ export class ChatService {
       response: {
         conversationId,
         message: persistedMessage,
+        ...(requestId
+          ? {
+              usage: undefined,
+            }
+          : {}),
       },
     };
   }
