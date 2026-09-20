@@ -6,10 +6,6 @@ import type {
 } from "../../types";
 
 import {
-  createMessageId,
-} from "../../lib/ids";
-
-import {
   validateChatApiRequest,
 } from "./validation";
 
@@ -99,37 +95,20 @@ export class ChatService {
         );
     }
 
-    const message: ChatMessage = {
-      id: createMessageId(),
-      conversationId: conversation.id,
-      role: "user",
-      content: input.message,
-      createdAt: new Date().toISOString(),
-      status: "sent",
-      attachments:
-        input.attachments ?? [],
-      ...(input.capabilityId
-        ? {
-            capabilityId:
-              input.capabilityId,
-          }
-        : {}),
-    };
-
     const persistedMessage =
       await this.repository.createMessage(
         userId,
         {
           conversationId:
             conversation.id,
-          role: message.role,
-          content: message.content,
+          role: "user",
+          content: input.message,
           attachments:
-            message.attachments,
-          ...(message.capabilityId
+            input.attachments ?? [],
+          ...(input.capabilityId
             ? {
                 capabilityId:
-                  message.capabilityId,
+                  input.capabilityId,
               }
             : {}),
         },
