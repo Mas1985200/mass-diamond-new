@@ -1,0 +1,137 @@
+:root {
+  color-scheme: dark;
+
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --md-bg: #050706;
+  --md-surface: #0a0d0b;
+  --md-surface-elevated: #101511;
+
+  --md-text: #f4f7f5;
+  --md-text-secondary: #a9b3ad;
+  --md-text-muted: #727c76;
+
+  --md-green: #39ff88;
+  --md-green-soft: #21c96b;
+  --md-green-muted: #157d46;
+
+  --md-border: rgba(255, 255, 255, 0.08);
+  --md-border-strong: rgba(57, 255, 136, 0.22);
+
+  --md-radius-sm: 8px;
+  --md-radius-md: 14px;
+  --md-radius-lg: 20px;
+  --md-radius-xl: 28px;
+
+  --md-shadow-sm: 0 4px 18px rgba(0, 0, 0, 0.2);
+  --md-shadow-lg: 0 18px 60px rgba(0, 0, 0, 0.35);
+
+  --md-content-width: 1280px;
+
+  background: var(--md-bg);
+  color: var(--md-text);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--md-bg);
+  color-scheme: dark;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(
+      circle at 50% -10%,
+      rgba(57, 255, 136, 0.07),
+      transparent 34rem
+    ),
+    var(--md-bg);
+  color: var(--md-text);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg,
+video,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+img,
+video {
+  height: auto;
+}
+
+textarea {
+  resize: vertical;
+}
+
+::selection {
+  background: rgba(57, 255, 136, 0.22);
+  color: var(--md-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--md-green);
+  outline-offset: 3px;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  isolation: isolate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
