@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { DiamondLogo } from "../brand";
 import ChatComposer from "./ChatComposer";
+import ChatMessageList from "./ChatMessageList";
 
 export interface ChatSurfaceProps {
   readonly children?: ReactNode;
@@ -14,7 +15,8 @@ function ChatSurface({
   disabled = false,
   onSubmit,
 }: ChatSurfaceProps) {
-  const hasContent = children !== undefined && children !== null;
+  const hasChildren =
+    children !== undefined && children !== null;
 
   return (
     <section
@@ -52,12 +54,13 @@ function ChatSurface({
 
       <div
         className={`md-chat-surface__content${
-          hasContent
+          hasChildren
             ? ""
             : " md-chat-surface__content--empty"
         }`}
+        aria-live="polite"
       >
-        {hasContent ? (
+        {hasChildren ? (
           children
         ) : (
           <div className="md-chat-empty-state">
