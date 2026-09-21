@@ -1,11 +1,17 @@
 import type { ReactNode } from "react";
 
+import ChatComposer from "./ChatComposer";
+
 export interface ChatSurfaceProps {
   readonly children?: ReactNode;
+  readonly disabled?: boolean;
+  readonly onSubmit?: (message: string) => void;
 }
 
 function ChatSurface({
   children,
+  disabled = false,
+  onSubmit,
 }: ChatSurfaceProps) {
   return (
     <section
@@ -39,6 +45,13 @@ function ChatSurface({
         aria-live="polite"
       >
         {children}
+      </div>
+
+      <div className="md-chat-surface__composer">
+        <ChatComposer
+          disabled={disabled}
+          onSubmit={onSubmit}
+        />
       </div>
     </section>
   );
