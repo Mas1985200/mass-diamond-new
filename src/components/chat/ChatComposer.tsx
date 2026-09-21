@@ -5,6 +5,7 @@ import {
 import {
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent,
   useEffect,
   useRef,
   useState,
@@ -60,13 +61,8 @@ function ChatComposer({
     setMessage(event.target.value);
   }
 
-  function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault();
-
-    const normalizedMessage =
-      message.trim();
+  function submitMessage() {
+    const normalizedMessage = message.trim();
 
     if (!normalizedMessage || disabled) {
       return;
@@ -74,6 +70,28 @@ function ChatComposer({
 
     onSubmit?.(normalizedMessage);
     setMessage("");
+  }
+
+  function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    submitMessage();
+  }
+
+  function handleKeyDown(
+    event: KeyboardEvent<HTMLTextAreaElement>,
+  ) {
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    submitMessage();
   }
 
   useEffect(() => {
@@ -108,6 +126,7 @@ function ChatComposer({
           ref={textareaRef}
           value={message}
           onChange={handleMessageChange}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
