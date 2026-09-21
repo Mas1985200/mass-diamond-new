@@ -1240,3 +1240,38 @@ textarea {
     transform: none;
   }
 }
+/* ==========================================================
+   Mass Diamond — Chat Streaming Cursor
+   ========================================================== */
+
+.md-chat-message__cursor {
+  display: inline-block;
+  width: 6px;
+  height: 1.05em;
+  margin-left: 4px;
+  vertical-align: -0.14em;
+  border-radius: 2px;
+  background: var(--md-green);
+  box-shadow: 0 0 10px rgba(57, 255, 136, 0.28);
+  animation: md-chat-streaming-cursor 900ms
+    steps(1, end) infinite;
+}
+
+@keyframes md-chat-streaming-cursor {
+  0%,
+  48% {
+    opacity: 1;
+  }
+
+  49%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-chat-message__cursor {
+    animation: none;
+    opacity: 1;
+  }
+}
