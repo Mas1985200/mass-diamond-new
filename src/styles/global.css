@@ -807,3 +807,112 @@ textarea {
 
   border: 0;
 }
+/* ==========================================================
+   Mass Diamond — Chat Header & Empty State
+   ========================================================== */
+
+.md-chat-surface__header {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--md-border);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(16, 21, 17, 0.72) 0%,
+      rgba(10, 13, 11, 0.48) 100%
+    );
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.md-chat-surface__identity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.md-chat-surface__identity > svg {
+  flex: 0 0 auto;
+}
+
+.md-chat-surface__title {
+  margin: 0;
+  color: var(--md-text);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.md-chat-surface__description {
+  margin: 4px 0 0;
+  color: var(--md-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.md-chat-surface__status {
+  position: relative;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--md-green);
+  box-shadow:
+    0 0 0 4px rgba(57, 255, 136, 0.07),
+    0 0 14px rgba(57, 255, 136, 0.42);
+}
+
+.md-chat-surface__status::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid rgba(57, 255, 136, 0.16);
+  border-radius: inherit;
+  animation: md-chat-status-pulse 2.4s ease-out infinite;
+}
+
+.md-chat-surface__content--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.md-chat-empty-state {
+  width: min(100%, 480px);
+  padding: 48px 24px 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.md-chat-empty-state > svg {
+  margin-bottom: 24px;
+  opacity: 0.92;
+}
+
+.md-chat-empty-state__text {
+  max-width: 420px;
+}
+
+.md-chat-empty-state__text h2 {
+  margin: 0;
+  color: var(--md-text);
+  font-size: clamp(20px, 2.4vw, 26px);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.md-chat-empty-state__text p {
+  margin:
