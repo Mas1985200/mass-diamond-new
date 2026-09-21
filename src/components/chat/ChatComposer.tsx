@@ -26,10 +26,12 @@ function ChatComposer({
   onSubmit,
 }: ChatComposerProps) {
   const [message, setMessage] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef =
+    useRef<HTMLTextAreaElement>(null);
 
   const canSubmit =
-    !disabled && message.trim().length > 0;
+    !disabled &&
+    message.trim().length > 0;
 
   function resizeTextarea() {
     const textarea = textareaRef.current;
@@ -62,9 +64,13 @@ function ChatComposer({
   }
 
   function submitMessage() {
-    const normalizedMessage = message.trim();
+    const normalizedMessage =
+      message.trim();
 
-    if (!normalizedMessage || disabled) {
+    if (
+      !normalizedMessage ||
+      disabled
+    ) {
       return;
     }
 
@@ -133,6 +139,7 @@ function ChatComposer({
           maxLength={32_000}
           autoComplete="off"
           spellCheck
+          aria-label="Message"
         />
       </label>
 
