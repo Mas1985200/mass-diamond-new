@@ -1,137 +1,115 @@
-:root {
-  color-scheme: dark;
+/* ==========================================================
+   Mass Diamond — Application Shell
+   ========================================================== */
 
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  --md-bg: #050706;
-  --md-surface: #0a0d0b;
-  --md-surface-elevated: #101511;
-
-  --md-text: #f4f7f5;
-  --md-text-secondary: #a9b3ad;
-  --md-text-muted: #727c76;
-
-  --md-green: #39ff88;
-  --md-green-soft: #21c96b;
-  --md-green-muted: #157d46;
-
-  --md-border: rgba(255, 255, 255, 0.08);
-  --md-border-strong: rgba(57, 255, 136, 0.22);
-
-  --md-radius-sm: 8px;
-  --md-radius-md: 14px;
-  --md-radius-lg: 20px;
-  --md-radius-xl: 28px;
-
-  --md-shadow-sm: 0 4px 18px rgba(0, 0, 0, 0.2);
-  --md-shadow-lg: 0 18px 60px rgba(0, 0, 0, 0.35);
-
-  --md-content-width: 1280px;
-
-  background: var(--md-bg);
-  color: var(--md-text);
-}
-
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 320px;
-  min-height: 100%;
-  background: var(--md-bg);
-  color-scheme: dark;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  margin: 0;
-  background:
-    radial-gradient(
-      circle at 50% -10%,
-      rgba(57, 255, 136, 0.07),
-      transparent 34rem
-    ),
-    var(--md-bg);
-  color: var(--md-text);
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-button {
-  color: inherit;
-}
-
-button,
-a {
-  -webkit-tap-highlight-color: transparent;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-img,
-svg,
-video,
-canvas {
-  display: block;
-  max-width: 100%;
-}
-
-img,
-video {
-  height: auto;
-}
-
-textarea {
-  resize: vertical;
-}
-
-::selection {
-  background: rgba(57, 255, 136, 0.22);
-  color: var(--md-text);
-}
-
-:focus-visible {
-  outline: 2px solid var(--md-green);
-  outline-offset: 3px;
-}
-
-#root {
-  min-height: 100vh;
+.md-app-shell {
   min-height: 100dvh;
-  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  background: var(--md-bg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+.md-app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--md-border);
+  background: rgba(5, 7, 6, 0.82);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.md-app-header__content {
+  width: min(100%, var(--md-content-width));
+  min-height: 68px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+}
+
+.md-app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.md-app-brand__mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--md-green);
+  font-size: 25px;
+  line-height: 1;
+  text-shadow:
+    0 0 8px rgba(57, 255, 136, 0.45),
+    0 0 22px rgba(57, 255, 136, 0.18);
+}
+
+.md-app-brand__name {
+  color: var(--md-text);
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.md-app-main {
+  flex: 1;
+  width: 100%;
+}
+
+.md-app-main__content {
+  width: min(100%, var(--md-content-width));
+  min-height: calc(100dvh - 68px);
+  margin: 0 auto;
+  padding: 24px 20px 104px;
+}
+
+.md-app-navigation {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  padding:
+    8px
+    max(8px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom))
+    max(8px, env(safe-area-inset-left));
+  border-top: 1px solid var(--md-border);
+  background: rgba(5, 7, 6, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.md-app-navigation__content {
+  width: min(100%, 680px);
+  height: 56px;
+  margin: 0 auto;
+}
+
+@media (min-width: 768px) {
+  .md-app-header__content {
+    padding-inline: 28px;
+  }
+
+  .md-app-main__content {
+    padding-inline: 28px;
+  }
+
+  .md-app-navigation {
+    padding-inline: 20px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .md-app-header,
+  .md-app-navigation {
+    background: var(--md-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
