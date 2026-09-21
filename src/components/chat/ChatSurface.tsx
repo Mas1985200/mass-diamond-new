@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { DiamondLogo } from "../brand";
 import ChatComposer from "./ChatComposer";
 
 export interface ChatSurfaceProps {
@@ -13,6 +14,8 @@ function ChatSurface({
   disabled = false,
   onSubmit,
 }: ChatSurfaceProps) {
+  const hasContent = children !== undefined && children !== null;
+
   return (
     <section
       className="md-chat-surface"
@@ -20,9 +23,10 @@ function ChatSurface({
     >
       <div className="md-chat-surface__header">
         <div className="md-chat-surface__identity">
-          <span
-            className="md-chat-surface__status"
-            aria-hidden="true"
+          <DiamondLogo
+            size={30}
+            glow
+            decorative
           />
 
           <div>
@@ -38,13 +42,42 @@ function ChatSurface({
             </p>
           </div>
         </div>
+
+        <span
+          className="md-chat-surface__status"
+          aria-label="Mass Diamond is ready"
+          role="status"
+        />
       </div>
 
       <div
-        className="md-chat-surface__content"
-        aria-live="polite"
+        className={`md-chat-surface__content${
+          hasContent
+            ? ""
+            : " md-chat-surface__content--empty"
+        }`}
       >
-        {children}
+        {hasContent ? (
+          children
+        ) : (
+          <div className="md-chat-empty-state">
+            <DiamondLogo
+              size={76}
+              glow
+              decorative
+            />
+
+            <div className="md-chat-empty-state__text">
+              <h2>Start a conversation</h2>
+
+              <p>
+                Ask a question, describe what you need,
+                or simply tell Mass Diamond what you want
+                to do.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="md-chat-surface__composer">
