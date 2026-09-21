@@ -3,6 +3,7 @@ import { DiamondLogo } from "../brand";
 
 export interface ChatMessageListProps {
   readonly messages: readonly ChatMessage[];
+  readonly onRetry?: (message: ChatMessage) => void;
 }
 
 function getStatusLabel(
@@ -11,14 +12,19 @@ function getStatusLabel(
   switch (status) {
     case "sending":
       return "Sending";
+
     case "sent":
       return null;
+
     case "streaming":
       return "Generating";
+
     case "completed":
       return null;
+
     case "error":
       return "Failed";
+
     default:
       return null;
   }
@@ -26,6 +32,7 @@ function getStatusLabel(
 
 function ChatMessageList({
   messages,
+  onRetry,
 }: ChatMessageListProps) {
   if (messages.length === 0) {
     return null;
@@ -41,6 +48,11 @@ function ChatMessageList({
         const statusLabel = getStatusLabel(
           message.status,
         );
+
+        const canRetry =
+          message.status === "error" &&
+          isUser &&
+          onRetry !== undefined;
 
         return (
           <article
@@ -91,6 +103,16 @@ function ChatMessageList({
               <div className="md-chat-message__content">
                 {message.content}
               </div>
+
+              {canRetry ? (
+                <button
+                  type="button"
+                  className="md-chat-message__retry"
+                  onClick={() => onRetry(message)}
+                >
+                  Try again
+                </button>
+              ) : null}
             </div>
           </article>
         );
