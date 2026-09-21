@@ -1136,3 +1136,47 @@ textarea {
     font-size: 9px;
   }
 }
+/* ==========================================================
+   Mass Diamond — Chat Message Area Scrolling
+   ========================================================== */
+
+.md-chat-surface__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+}
+
+.md-chat-surface__content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.md-chat-surface__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.md-chat-surface__content::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  background-clip: padding-box;
+}
+
+.md-chat-surface__content::-webkit-scrollbar-thumb:hover {
+  background: rgba(57, 255, 136, 0.18);
+  background-clip: padding-box;
+}
+
+.md-chat-surface__content {
+  scrollbar-color: rgba(255, 255, 255, 0.09) transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-chat-surface__content {
+    scroll-behavior: auto;
+  }
+}
