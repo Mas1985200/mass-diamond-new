@@ -37,7 +37,9 @@ function App() {
   return (
     <AppShell>
       <ChatSurface onSubmit={handleSubmit}>
-        <ChatMessageList messages={messages} />
+        {messages.length > 0 ? (
+          <ChatMessageList messages={messages} />
+        ) : undefined}
       </ChatSurface>
     </AppShell>
   );
