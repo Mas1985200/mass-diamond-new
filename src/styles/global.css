@@ -1075,3 +1075,64 @@ textarea {
     animation: none;
   }
 }
+/* ==========================================================
+   Mass Diamond — Chat Message Status
+   ========================================================== */
+
+.md-chat-message__status {
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 7px;
+  border: 1px solid var(--md-border);
+  border-radius: 999px;
+  color: var(--md-text-muted);
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.md-chat-message__status--sending,
+.md-chat-message__status--streaming {
+  border-color: rgba(57, 255, 136, 0.14);
+  color: var(--md-green-soft);
+  background: rgba(57, 255, 136, 0.045);
+}
+
+.md-chat-message__status--streaming {
+  animation: md-chat-status-breathe 1.6s ease-in-out infinite;
+}
+
+.md-chat-message__status--error {
+  border-color: rgba(255, 120, 120, 0.18);
+  color: #ff9b9b;
+  background: rgba(255, 90, 90, 0.045);
+}
+
+@keyframes md-chat-status-breathe {
+  0%,
+  100% {
+    opacity: 0.58;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-chat-message__status--streaming {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .md-chat-message__status {
+    margin-left: 6px;
+    padding-inline: 6px;
+    font-size: 9px;
+  }
+}
