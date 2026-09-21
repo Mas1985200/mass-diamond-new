@@ -3,7 +3,10 @@ import {
   Paperclip,
 } from "lucide-react";
 import {
+  type ChangeEvent,
   type FormEvent,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -13,20 +16,57 @@ export interface ChatComposerProps {
   readonly onSubmit?: (message: string) => void;
 }
 
+const MIN_TEXTAREA_HEIGHT = 42;
+const MAX_TEXTAREA_HEIGHT = 180;
+
 function ChatComposer({
   disabled = false,
   placeholder = "Message Mass Diamond...",
   onSubmit,
 }: ChatComposerProps) {
   const [message, setMessage] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canSubmit =
     !disabled && message.trim().length > 0;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function resizeTextarea() {
+    const textarea = textareaRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "auto";
+
+    const nextHeight = Math.min(
+      Math.max(
+        textarea.scrollHeight,
+        MIN_TEXTAREA_HEIGHT,
+      ),
+      MAX_TEXTAREA_HEIGHT,
+    );
+
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > MAX_TEXTAREA_HEIGHT
+        ? "auto"
+        : "hidden";
+  }
+
+  function handleMessageChange(
+    event: ChangeEvent<HTMLTextAreaElement>,
+  ) {
+    setMessage(event.target.value);
+  }
+
+  function handleSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
 
-    const normalizedMessage = message.trim();
+    const normalizedMessage =
+      message.trim();
 
     if (!normalizedMessage || disabled) {
       return;
@@ -35,6 +75,10 @@ function ChatComposer({
     onSubmit?.(normalizedMessage);
     setMessage("");
   }
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [message]);
 
   return (
     <form
@@ -55,18 +99,15 @@ function ChatComposer({
         />
       </button>
 
-      <label
-        className="md-chat-composer__field"
-      >
+      <label className="md-chat-composer__field">
         <span className="sr-only">
           Message
         </span>
 
         <textarea
+          ref={textareaRef}
           value={message}
-          onChange={(event) =>
-            setMessage(event.target.value)
-          }
+          onChange={handleMessageChange}
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
