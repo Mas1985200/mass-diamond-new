@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { DiamondLogo } from "../brand";
+
 export interface AppShellProps {
   readonly children: ReactNode;
 }
@@ -9,10 +11,12 @@ function AppShell({ children }: AppShellProps) {
     <div className="md-app-shell">
       <header className="md-app-header">
         <div className="md-app-header__content">
-          <div className="md-app-brand" aria-label="Mass Diamond">
-            <div className="md-app-brand__mark" aria-hidden="true">
-              ◇
-            </div>
+          <div className="md-app-brand">
+            <DiamondLogo
+              size={34}
+              glow
+              decorative
+            />
 
             <span className="md-app-brand__name">
               Mass Diamond
