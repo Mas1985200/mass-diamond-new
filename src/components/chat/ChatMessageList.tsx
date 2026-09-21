@@ -45,6 +45,8 @@ function ChatMessageList({
     >
       {messages.map((message) => {
         const isUser = message.role === "user";
+        const isStreaming =
+          message.status === "streaming";
         const statusLabel = getStatusLabel(
           message.status,
         );
@@ -62,6 +64,7 @@ function ChatMessageList({
                 ? "md-chat-message--user"
                 : "md-chat-message--assistant"
             }`}
+            aria-busy={isStreaming || undefined}
           >
             <div className="md-chat-message__avatar">
               {isUser ? (
@@ -100,8 +103,22 @@ function ChatMessageList({
                 ) : null}
               </div>
 
-              <div className="md-chat-message__content">
+              <div
+                className="md-chat-message__content"
+                aria-live={
+                  isStreaming
+                    ? "polite"
+                    : undefined
+                }
+              >
                 {message.content}
+
+                {isStreaming ? (
+                  <span
+                    className="md-chat-message__cursor"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
 
               {canRetry ? (
