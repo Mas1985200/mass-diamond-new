@@ -1180,3 +1180,63 @@ textarea {
     scroll-behavior: auto;
   }
 }
+/* ==========================================================
+   Mass Diamond — Chat Message Retry
+   ========================================================== */
+
+.md-chat-message__retry {
+  margin-top: 10px;
+  min-height: 32px;
+  padding: 6px 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--md-border);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--md-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--md-transition-fast),
+    border-color var(--md-transition-fast),
+    background var(--md-transition-fast),
+    box-shadow var(--md-transition-fast);
+}
+
+.md-chat-message__retry:hover {
+  border-color: var(--md-border-strong);
+  background: rgba(57, 255, 136, 0.055);
+  color: var(--md-green);
+  box-shadow: 0 0 18px rgba(57, 255, 136, 0.06);
+}
+
+.md-chat-message__retry:focus-visible {
+  outline: 2px solid var(--md-green);
+  outline-offset: 2px;
+}
+
+.md-chat-message__retry:active {
+  transform: translateY(1px);
+}
+
+@media (max-width: 640px) {
+  .md-chat-message__retry {
+    min-height: 30px;
+    padding-inline: 10px;
+    font-size: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-chat-message__retry {
+    transition: none;
+  }
+
+  .md-chat-message__retry:active {
+    transform: none;
+  }
+}
