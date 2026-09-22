@@ -5,7 +5,6 @@ import {
 
 import type {
   ChatApiRequest,
-  ChatApiResponse,
 } from "../types";
 
 import {
