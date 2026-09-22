@@ -1,4 +1,8 @@
 import type { ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+} from "react";
 
 import { DiamondLogo } from "../brand";
 import ChatComposer from "./ChatComposer";
@@ -15,8 +19,25 @@ function ChatSurface({
   disabled = false,
   onSubmit,
 }: ChatSurfaceProps) {
+  const contentRef =
+    useRef<HTMLDivElement>(null);
+
   const hasChildren =
-    children !== undefined && children !== null;
+    children !== undefined &&
+    children !== null;
+
+  useEffect(() => {
+    const content = contentRef.current;
+
+    if (!content || !hasChildren) {
+      return;
+    }
+
+    content.scrollTo({
+      top: content.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [children, hasChildren]);
 
   return (
     <section
@@ -53,6 +74,7 @@ function ChatSurface({
       </div>
 
       <div
+        ref={contentRef}
         className={`md-chat-surface__content${
           hasChildren
             ? ""
