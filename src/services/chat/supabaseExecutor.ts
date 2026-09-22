@@ -3,7 +3,6 @@ import type {
   ChatMessage,
 } from "../../types";
 
-import { createMessageId } from "../../lib/ids";
 import { supabase } from "../supabase";
 
 import type {
@@ -14,14 +13,9 @@ import type {
 
 interface EdgeFunctionResponse {
   readonly success?: unknown;
-  readonly content?: unknown;
-  readonly capability?: unknown;
-  readonly language?: unknown;
-  readonly provider?: unknown;
-  readonly model?: unknown;
   readonly conversationId?: unknown;
+  readonly message?: unknown;
   readonly usage?: unknown;
-  readonly meta?: unknown;
   readonly error?: unknown;
 }
 
@@ -73,31 +67,31 @@ function getFunctionsUrl(): string {
   return `${baseUrl}/functions/v1/ai-chat`;
 }
 
-function createAssistantMessage(
-  input: ChatExecutionInput,
-  content: string,
-): ChatMessage {
-  const now =
-    new Date().toISOString();
+function isChatMessage(
+  value: unknown,
+): value is ChatMessage {
+  if (!isRecord(value)) {
+    return false;
+  }
 
-  return {
-    id: createMessageId(),
-    conversationId:
-      input.request.conversationId ??
-      "",
-    role: "assistant",
-    content,
-    createdAt: now,
-    updatedAt: now,
-    status: "completed",
-    attachments: [],
-    ...(input.request.capabilityId
-      ? {
-          capabilityId:
-            input.request.capabilityId,
-        }
-      : {}),
-  };
+  return (
+    typeof value.id === "string" &&
+    typeof value.conversationId ===
+      "string" &&
+    value.role === "assistant" &&
+    typeof value.content === "string" &&
+    typeof value.createdAt === "string" &&
+    (value.updatedAt === undefined ||
+      typeof value.updatedAt === "string") &&
+    (
+      value.status === "sending" ||
+      value.status === "sent" ||
+      value.status === "streaming" ||
+      value.status === "completed" ||
+      value.status === "error"
+    ) &&
+    Array.isArray(value.attachments)
+  );
 }
 
 function parseEdgeResponse(
@@ -111,32 +105,34 @@ function parseEdgeResponse(
 }
 
 function mapEdgeResponse(
-  input: ChatExecutionInput,
   payload: EdgeFunctionResponse,
 ): ChatExecutionResult {
   const success =
     getBoolean(payload.success);
 
   if (success !== true) {
-    const errorMessage =
-      getString(payload.error) ??
-      "The AI service could not complete the request.";
-
     return createExecutorError(
-      errorMessage,
+      getString(payload.error) ??
+        "The AI service could not complete the request.",
       true,
     );
   }
 
-  const content =
-    getString(payload.content);
-
   if (
-    content === null ||
-    content.trim().length === 0
+    !isChatMessage(payload.message)
   ) {
     return createExecutorError(
-      "The AI service returned an empty response.",
+      "The AI service returned an invalid assistant message.",
+      false,
+    );
+  }
+
+  if (
+    payload.message.content.trim()
+      .length === 0
+  ) {
+    return createExecutorError(
+      "The AI service returned an empty assistant response.",
       true,
     );
   }
@@ -145,33 +141,22 @@ function mapEdgeResponse(
     getString(
       payload.conversationId,
     ) ??
-    input.request.conversationId;
+    payload.message.conversationId;
 
   if (
-    conversationId === null ||
-    conversationId.length === 0
+    conversationId.length === 0 ||
+    conversationId !==
+      payload.message.conversationId
   ) {
     return createExecutorError(
-      "The AI service did not return a conversation identifier.",
+      "The AI service returned an invalid conversation identifier.",
       false,
     );
   }
 
-  const assistantMessage =
-    createAssistantMessage(
-      {
-        ...input,
-        request: {
-          ...input.request,
-          conversationId,
-        },
-      },
-      content,
-    );
-
   const response: ChatApiResponse = {
     conversationId,
-    message: assistantMessage,
+    message: payload.message,
     ...(isRecord(payload.usage)
       ? {
           usage: {
@@ -199,6 +184,14 @@ function mapEdgeResponse(
                       .totalTokens,
                 }
               : {}),
+            ...(typeof payload.usage
+              .latencyMs === "number"
+              ? {
+                  latencyMs:
+                    payload.usage
+                      .latencyMs,
+                }
+              : {}),
           },
         }
       : {}),
@@ -207,7 +200,8 @@ function mapEdgeResponse(
   return {
     success: true,
     response,
-    assistantMessage,
+    assistantMessage:
+      payload.message,
   };
 }
 
@@ -245,7 +239,8 @@ export class SupabaseChatExecutor
     }
 
     const body = {
-      message: input.request.message,
+      message:
+        input.request.message,
       ...(input.request.conversationId
         ? {
             conversationId:
@@ -303,7 +298,8 @@ export class SupabaseChatExecutor
     let payload: unknown;
 
     try {
-      payload = await response.json();
+      payload =
+        await response.json();
     } catch {
       return createExecutorError(
         "The AI service returned an invalid response.",
@@ -322,12 +318,9 @@ export class SupabaseChatExecutor
     }
 
     if (!response.ok) {
-      const errorMessage =
-        getString(parsed.error) ??
-        `The AI service returned HTTP ${response.status}.`;
-
       return createExecutorError(
-        errorMessage,
+        getString(parsed.error) ??
+          `The AI service returned HTTP ${response.status}.`,
         response.status === 408 ||
           response.status === 429 ||
           response.status >= 500,
@@ -335,7 +328,6 @@ export class SupabaseChatExecutor
     }
 
     return mapEdgeResponse(
-      input,
       parsed,
     );
   }
