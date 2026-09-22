@@ -6,7 +6,6 @@ import {
 
 import { DiamondLogo } from "../brand";
 import ChatComposer from "./ChatComposer";
-import ChatMessageList from "./ChatMessageList";
 
 export interface ChatSurfaceProps {
   readonly children?: ReactNode;
@@ -38,8 +37,8 @@ function ChatSurface({
   const contentRef =
     useRef<HTMLDivElement>(null);
 
-  const previousScrollHeightRef =
-    useRef(0);
+  const shouldAutoScrollRef =
+    useRef(true);
 
   const hasChildren =
     children !== undefined &&
@@ -48,27 +47,47 @@ function ChatSurface({
   useEffect(() => {
     const content = contentRef.current;
 
-    if (!content || !hasChildren) {
+    if (!content) {
       return;
     }
 
-    const previousScrollHeight =
-      previousScrollHeightRef.current;
-
-    const wasNearBottom =
-      previousScrollHeight === 0 ||
+    shouldAutoScrollRef.current =
       isNearBottom(content);
+  }, []);
 
-    if (wasNearBottom) {
-      content.scrollTo({
-        top: content.scrollHeight,
-        behavior: "smooth",
-      });
+  useEffect(() => {
+    const content = contentRef.current;
+
+    if (!content) {
+      return;
     }
 
-    previousScrollHeightRef.current =
-      content.scrollHeight;
+    if (!hasChildren) {
+      content.scrollTop = 0;
+      shouldAutoScrollRef.current = true;
+      return;
+    }
+
+    if (!shouldAutoScrollRef.current) {
+      return;
+    }
+
+    content.scrollTo({
+      top: content.scrollHeight,
+      behavior: "smooth",
+    });
   }, [children, hasChildren]);
+
+  function handleScroll() {
+    const content = contentRef.current;
+
+    if (!content) {
+      return;
+    }
+
+    shouldAutoScrollRef.current =
+      isNearBottom(content);
+  }
 
   return (
     <section
@@ -111,6 +130,7 @@ function ChatSurface({
             ? ""
             : " md-chat-surface__content--empty"
         }`}
+        onScroll={handleScroll}
         aria-live="polite"
       >
         {hasChildren ? (
