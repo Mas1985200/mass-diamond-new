@@ -6,25 +6,35 @@ import AppShell from "./components/layout/AppShell";
 import { createMessageId } from "./lib/ids";
 import type { ChatMessage } from "./types";
 
+const LOCAL_CONVERSATION_ID =
+  "local-preview";
+
+function createUserMessage(
+  content: string,
+): ChatMessage {
+  const now = new Date().toISOString();
+
+  return {
+    id: createMessageId(),
+    conversationId:
+      LOCAL_CONVERSATION_ID,
+    role: "user",
+    content,
+    createdAt: now,
+    updatedAt: now,
+    status: "sent",
+    attachments: [],
+  };
+}
+
 function App() {
   const [messages, setMessages] =
     useState<readonly ChatMessage[]>([]);
 
   const handleSubmit = useCallback(
     (content: string) => {
-      const now = new Date().toISOString();
-      const conversationId = "local-preview";
-
-      const message: ChatMessage = {
-        id: createMessageId(),
-        conversationId,
-        role: "user",
-        content,
-        createdAt: now,
-        updatedAt: now,
-        status: "sent",
-        attachments: [],
-      };
+      const message =
+        createUserMessage(content);
 
       setMessages((currentMessages) => [
         ...currentMessages,
@@ -34,11 +44,46 @@ function App() {
     [],
   );
 
+  const handleRetry = useCallback(
+    (message: ChatMessage) => {
+      if (message.role !== "user") {
+        return;
+      }
+
+      setMessages((currentMessages) =>
+        currentMessages.map(
+          (currentMessage) => {
+            if (
+              currentMessage.id !==
+              message.id
+            ) {
+              return currentMessage;
+            }
+
+            return {
+              ...currentMessage,
+              status: "sending",
+              updatedAt:
+                new Date().toISOString(),
+              errorCode: undefined,
+            };
+          },
+        ),
+      );
+    },
+    [],
+  );
+
   return (
     <AppShell>
-      <ChatSurface onSubmit={handleSubmit}>
+      <ChatSurface
+        onSubmit={handleSubmit}
+      >
         {messages.length > 0 ? (
-          <ChatMessageList messages={messages} />
+          <ChatMessageList
+            messages={messages}
+            onRetry={handleRetry}
+          />
         ) : undefined}
       </ChatSurface>
     </AppShell>
