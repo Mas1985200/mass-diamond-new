@@ -9,33 +9,122 @@ import type {
   UserSession,
 } from "../types";
 
+import { createSessionId } from "../lib/ids";
 import { supabase } from "./supabase";
+
+let currentSessionId:
+  | UserSession["id"]
+  | null = null;
+
+function isSupportedLocale(
+  value: unknown,
+): value is UserContext["locale"] {
+  return (
+    value === "en" ||
+    value === "fa" ||
+    value === "ar" ||
+    value === "tr" ||
+    value === "fr" ||
+    value === "de" ||
+    value === "es" ||
+    value === "nl" ||
+    value === "ru" ||
+    value === "ko" ||
+    value === "ja" ||
+    value === "hi"
+  );
+}
 
 function mapUser(
   user: User,
 ): UserContext {
+  const metadata =
+    user.user_metadata;
+
+  const locale = isSupportedLocale(
+    metadata?.locale,
+  )
+    ? metadata.locale
+    : "en";
+
   return {
-    id: user.id,
-    email: user.email ?? null,
+    userId: user.id,
+    locale,
+    ...(typeof metadata?.timezone === "string" &&
+    metadata.timezone.trim().length > 0
+      ? {
+          timezone:
+            metadata.timezone,
+        }
+      : {}),
+    ...(typeof metadata?.countryCode === "string" &&
+    metadata.countryCode.trim().length > 0
+      ? {
+          countryCode:
+            metadata.countryCode,
+        }
+      : {}),
+    ...(typeof metadata?.city === "string" &&
+    metadata.city.trim().length > 0
+      ? {
+          city:
+            metadata.city,
+        }
+      : {}),
   };
+}
+
+function getSessionExpiresAt(
+  session: Session,
+): string {
+  const expiresAtSeconds =
+    session.expires_at ??
+    Math.floor(
+      Date.now() / 1000,
+    ) + session.expires_in;
+
+  return new Date(
+    expiresAtSeconds * 1000,
+  ).toISOString();
+}
+
+function getSessionCreatedAt(
+  session: Session,
+): string {
+  const expiresAtSeconds =
+    session.expires_at ??
+    Math.floor(
+      Date.now() / 1000,
+    ) + session.expires_in;
+
+  const createdAtSeconds =
+    expiresAtSeconds -
+    session.expires_in;
+
+  return new Date(
+    createdAtSeconds * 1000,
+  ).toISOString();
 }
 
 function mapSession(
   session: Session,
 ): UserSession {
-  const expiresAt =
-    session.expires_at !== undefined
-      ? new Date(
-          session.expires_at * 1000,
-        ).toISOString()
-      : null;
+  if (currentSessionId === null) {
+    currentSessionId =
+      createSessionId();
+  }
 
   return {
-    id: session.user.id,
-    user: mapUser(session.user),
-    status: "active" satisfies SessionStatus,
-    createdAt: session.user.created_at,
-    expiresAt,
+    id: currentSessionId,
+    userId: session.user.id,
+    status:
+      "active" satisfies SessionStatus,
+    createdAt:
+      getSessionCreatedAt(session),
+    expiresAt:
+      getSessionExpiresAt(session),
+    lastActivityAt:
+      new Date().toISOString(),
   };
 }
 
@@ -52,10 +141,13 @@ export async function getCurrentSession(): Promise<
   }
 
   if (!data.session) {
+    currentSessionId = null;
     return null;
   }
 
-  return mapSession(data.session);
+  return mapSession(
+    data.session,
+  );
 }
 
 export async function getCurrentUser(): Promise<
@@ -95,10 +187,14 @@ export function subscribeToAuthChanges(
     },
   } = supabase.auth.onAuthStateChange(
     (_event, session) => {
+      if (!session) {
+        currentSessionId = null;
+        listener(null);
+        return;
+      }
+
       listener(
-        session
-          ? mapSession(session)
-          : null,
+        mapSession(session),
       );
     },
   );
@@ -116,4 +212,6 @@ export async function signOut(): Promise<void> {
   if (error) {
     throw error;
   }
+
+  currentSessionId = null;
 }
