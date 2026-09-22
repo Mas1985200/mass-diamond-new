@@ -11,14 +11,34 @@ import {
   memoryChatStore,
 } from "./memoryStore";
 
-const chatServiceDependencies: ChatServiceDependencies =
-  {
-    repository:
-      supabaseChatRepository,
-    store: memoryChatStore,
-  };
+import {
+  ChatOrchestrator,
+  type ChatOrchestratorDependencies,
+} from "./orchestrator";
+
+import {
+  supabaseChatExecutor,
+} from "./supabaseExecutor";
+
+const chatServiceDependencies:
+  ChatServiceDependencies = {
+  repository:
+    supabaseChatRepository,
+  store: memoryChatStore,
+};
 
 export const chatService =
   new ChatService(
     chatServiceDependencies,
+  );
+
+const chatOrchestratorDependencies:
+  ChatOrchestratorDependencies = {
+  executor:
+    supabaseChatExecutor,
+};
+
+export const chatOrchestrator =
+  new ChatOrchestrator(
+    chatOrchestratorDependencies,
   );
