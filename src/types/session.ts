@@ -1,5 +1,10 @@
-import type { EntityId, ISODateString } from "./common";
-import type { SupportedLocale } from "./app";
+import type {
+  EntityId,
+  ISODateString,
+} from "./common";
+import type {
+  SupportedLocale,
+} from "./app";
 
 export type SessionStatus =
   | "active"
@@ -24,7 +29,8 @@ export interface UserSession {
 }
 
 export interface SessionContext {
-  readonly session: UserSession;
-  readonly user: UserContext;
+  readonly session: UserSession | null;
+  readonly user: UserContext | null;
   readonly requestId: EntityId;
+  readonly isAuthenticated: boolean;
 }
