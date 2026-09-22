@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import ChatMessageList from "./components/chat/ChatMessageList";
 import ChatSurface from "./components/chat/ChatSurface";
 import AppShell from "./components/layout/AppShell";
+import SessionProvider from "./contexts/SessionContext";
 import { createMessageId } from "./lib/ids";
 import type { ChatMessage } from "./types";
 
@@ -27,7 +28,7 @@ function createUserMessage(
   };
 }
 
-function App() {
+function AppContent() {
   const [messages, setMessages] =
     useState<readonly ChatMessage[]>([]);
 
@@ -87,6 +88,14 @@ function App() {
         ) : undefined}
       </ChatSurface>
     </AppShell>
+  );
+}
+
+function App() {
+  return (
+    <SessionProvider>
+      <AppContent />
+    </SessionProvider>
   );
 }
 
