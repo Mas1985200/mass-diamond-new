@@ -42,6 +42,9 @@ function SessionProvider({
 
   useEffect(() => {
     let mounted = true;
+    let userLoadTimer: ReturnType<
+      typeof setTimeout
+    > | null = null;
 
     async function loadInitialSession() {
       try {
@@ -79,6 +82,28 @@ function SessionProvider({
       }
     }
 
+    function loadUserAfterAuthChange() {
+      if (!mounted) {
+        return;
+      }
+
+      void getCurrentUser()
+        .then((nextUser) => {
+          if (!mounted) {
+            return;
+          }
+
+          setUser(nextUser);
+        })
+        .catch(() => {
+          if (!mounted) {
+            return;
+          }
+
+          setUser(null);
+        });
+    }
+
     void loadInitialSession();
 
     const unsubscribe =
@@ -96,26 +121,25 @@ function SessionProvider({
             return;
           }
 
-          void getCurrentUser()
-            .then((nextUser) => {
-              if (!mounted) {
-                return;
-              }
+          if (userLoadTimer !== null) {
+            clearTimeout(userLoadTimer);
+          }
 
-              setUser(nextUser);
-            })
-            .catch(() => {
-              if (!mounted) {
-                return;
-              }
-
-              setUser(null);
-            });
+          userLoadTimer = setTimeout(() => {
+            userLoadTimer = null;
+            loadUserAfterAuthChange();
+          }, 0);
         },
       );
 
     return () => {
       mounted = false;
+
+      if (userLoadTimer !== null) {
+        clearTimeout(userLoadTimer);
+        userLoadTimer = null;
+      }
+
       unsubscribe();
     };
   }, []);
