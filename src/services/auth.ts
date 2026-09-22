@@ -3,13 +3,13 @@ import type {
   User,
 } from "@supabase/supabase-js";
 
-import { supabase } from "./supabase";
 import type {
-  SessionContext,
   SessionStatus,
   UserContext,
   UserSession,
 } from "../types";
+
+import { supabase } from "./supabase";
 
 function mapUser(
   user: User,
@@ -23,18 +23,19 @@ function mapUser(
 function mapSession(
   session: Session,
 ): UserSession {
+  const expiresAt =
+    session.expires_at !== undefined
+      ? new Date(
+          session.expires_at * 1000,
+        ).toISOString()
+      : null;
+
   return {
-    id: session.access_token,
+    id: session.user.id,
     user: mapUser(session.user),
     status: "active" satisfies SessionStatus,
-    createdAt:
-      session.user.created_at,
-    expiresAt:
-      session.expires_at
-        ? new Date(
-            session.expires_at * 1000,
-          ).toISOString()
-        : null,
+    createdAt: session.user.created_at,
+    expiresAt,
   };
 }
 
@@ -108,8 +109,9 @@ export function subscribeToAuthChanges(
 }
 
 export async function signOut(): Promise<void> {
-  const { error } =
-    await supabase.auth.signOut();
+  const {
+    error,
+  } = await supabase.auth.signOut();
 
   if (error) {
     throw error;
