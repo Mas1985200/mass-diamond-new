@@ -3,12 +3,14 @@ import type {
   ChatApiResponse,
 } from "../../types";
 
-import { chatService } from "./container";
-
 import type {
   UserContext,
   UserSession,
 } from "../../types";
+
+import {
+  chatOrchestrator,
+} from "./container";
 
 export interface ChatClientContext {
   readonly session: UserSession;
@@ -25,9 +27,11 @@ export type ChatClientResult =
       readonly error: {
         readonly code:
           | "AUTH_REQUIRED"
-          | "INVALID_INPUT";
+          | "INVALID_INPUT"
+          | "CAPABILITY_UNAVAILABLE"
+          | "PROVIDER_ERROR";
         readonly message: string;
-        readonly field?: string;
+        readonly retryable: boolean;
       };
     };
 
@@ -35,22 +39,12 @@ export async function sendChatMessage(
   context: ChatClientContext,
   request: ChatApiRequest,
 ): Promise<ChatClientResult> {
-  if (
-    !context.session ||
-    !context.user
-  ) {
-    return {
-      success: false,
-      error: {
-        code: "AUTH_REQUIRED",
-        message:
-          "Authentication is required to send a chat message.",
-      },
-    };
-  }
-
-  return chatService.prepareMessage(
-    context.user.userId,
+  return chatOrchestrator.execute({
+    userId:
+      context.user.userId,
+    requestId:
+      request.requestId ??
+      crypto.randomUUID(),
     request,
-  );
+  });
 }
