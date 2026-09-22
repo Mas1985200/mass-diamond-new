@@ -14,6 +14,22 @@ export interface ChatSurfaceProps {
   readonly onSubmit?: (message: string) => void;
 }
 
+const AUTO_SCROLL_THRESHOLD = 120;
+
+function isNearBottom(
+  element: HTMLDivElement,
+): boolean {
+  const distanceFromBottom =
+    element.scrollHeight -
+    element.scrollTop -
+    element.clientHeight;
+
+  return (
+    distanceFromBottom <=
+    AUTO_SCROLL_THRESHOLD
+  );
+}
+
 function ChatSurface({
   children,
   disabled = false,
@@ -21,6 +37,9 @@ function ChatSurface({
 }: ChatSurfaceProps) {
   const contentRef =
     useRef<HTMLDivElement>(null);
+
+  const previousScrollHeightRef =
+    useRef(0);
 
   const hasChildren =
     children !== undefined &&
@@ -33,10 +52,22 @@ function ChatSurface({
       return;
     }
 
-    content.scrollTo({
-      top: content.scrollHeight,
-      behavior: "smooth",
-    });
+    const previousScrollHeight =
+      previousScrollHeightRef.current;
+
+    const wasNearBottom =
+      previousScrollHeight === 0 ||
+      isNearBottom(content);
+
+    if (wasNearBottom) {
+      content.scrollTo({
+        top: content.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+
+    previousScrollHeightRef.current =
+      content.scrollHeight;
   }, [children, hasChildren]);
 
   return (
