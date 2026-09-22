@@ -36,6 +36,7 @@ const chatOrchestratorDependencies:
   ChatOrchestratorDependencies = {
   executor:
     supabaseChatExecutor,
+  chatService,
 };
 
 export const chatOrchestrator =
