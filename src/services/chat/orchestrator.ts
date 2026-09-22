@@ -1,7 +1,14 @@
 import type {
   ChatApiRequest,
+  ChatApiResponse,
+  ChatMessage,
   RoutingInput,
 } from "../../types";
+
+import {
+  ChatService,
+  type ChatServiceResponse,
+} from "./service";
 
 import {
   routeCapability,
@@ -16,6 +23,7 @@ import type {
 
 export interface ChatOrchestratorDependencies {
   readonly executor: ChatExecutor;
+  readonly chatService: ChatService;
 }
 
 export interface ChatOrchestratorInput {
@@ -24,47 +32,129 @@ export interface ChatOrchestratorInput {
   readonly request: ChatApiRequest;
 }
 
+function createExecutionFailure(
+  result: ChatServiceResponse,
+): ChatExecutionResult {
+  if (result.success) {
+    throw new Error(
+      "Expected a ChatService validation failure.",
+    );
+  }
+
+  return {
+    success: false,
+    error: {
+      code: "INVALID_INPUT",
+      message: result.error.message,
+      retryable: false,
+    },
+  };
+}
+
+function createRoutingInput(
+  request: ChatApiRequest,
+): RoutingInput {
+  return {
+    message: request.message,
+    ...(request.conversationId
+      ? {
+          conversationId:
+            request.conversationId,
+        }
+      : {}),
+    ...(request.locale
+      ? {
+          locale: request.locale,
+        }
+      : {}),
+    hasAttachments:
+      (request.attachments?.length ?? 0) > 0,
+    ...(request.attachments &&
+    request.attachments.length > 0
+      ? {
+          attachmentTypes:
+            request.attachments.map(
+              (attachment) =>
+                attachment.mimeType,
+            ),
+        }
+      : {}),
+  };
+}
+
+function createPreparedRequest(
+  request: ChatApiRequest,
+  response: ChatApiResponse,
+  capabilityId: string,
+  requestId: string,
+): ChatApiRequest {
+  return {
+    ...request,
+    conversationId:
+      response.conversationId,
+    capabilityId,
+    requestId,
+  };
+}
+
+function isUserMessage(
+  message: ChatMessage,
+): boolean {
+  return message.role === "user";
+}
+
 export class ChatOrchestrator {
   private readonly executor: ChatExecutor;
+
+  private readonly chatService: ChatService;
 
   public constructor(
     dependencies: ChatOrchestratorDependencies,
   ) {
     this.executor =
       dependencies.executor;
+
+    this.chatService =
+      dependencies.chatService;
   }
 
   public async execute(
     input: ChatOrchestratorInput,
   ): Promise<ChatExecutionResult> {
-    const routingInput: RoutingInput = {
-      message: input.request.message,
-      ...(input.request.conversationId
-        ? {
-            conversationId:
-              input.request.conversationId,
-          }
-        : {}),
-      ...(input.request.locale
-        ? {
-            locale:
-              input.request.locale,
-          }
-        : {}),
-      hasAttachments:
-        (input.request.attachments?.length ??
-          0) > 0,
-      ...(input.request.attachments &&
-      input.request.attachments.length > 0
-        ? {
-            attachmentTypes:
-              input.request.attachments.map(
-                (attachment) =>
-                  attachment.mimeType,
-              ),
-          }
-        : {}),
-    };
+    const prepared =
+      await this.chatService.prepareMessage(
+        input.userId,
+        input.request,
+      );
+
+    if (!prepared.success) {
+      return createExecutionFailure(
+        prepared,
+      );
+    }
+
+    if (
+      !isUserMessage(
+        prepared.response.message,
+      )
+    ) {
+      return {
+        success: false,
+        error: {
+          code: "INVALID_INPUT",
+          message:
+            "The prepared chat message has an invalid role.",
+          retryable: false,
+        },
+      };
+    }
+
+    const routingInput =
+      createRoutingInput({
+        ...input.request,
+        conversationId:
+          prepared.response.conversationId,
+      });
 
     const routingContext =
       routeCapability(
@@ -78,18 +168,19 @@ export class ChatOrchestrator {
         requestId: input.requestId,
       };
 
+    const executionRequest =
+      createPreparedRequest(
+        input.request,
+        prepared.response,
+        routingContext.result.primary
+          .capability,
+        input.requestId,
+      );
+
     const executionInput:
       ChatExecutionInput = {
         context: executionContext,
-        request: {
-          ...input.request,
-          capabilityId:
-            input.request.capabilityId ??
-            routingContext.result.primary
-              .capability,
-          requestId:
-            input.requestId,
-        },
+        request: executionRequest,
       };
 
     return this.executor.execute(
