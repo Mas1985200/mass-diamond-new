@@ -1,6 +1,20 @@
 // ==========================================================
 // Mass Diamond — AI Provider Resolver
-// Resolves a configured provider without exposing secrets.
+//
+// Resolves configured AI providers into an ordered
+// execution chain without exposing provider secrets.
+//
+// Responsibilities:
+// - Resolve configured provider
+// - Build ordered provider chain
+// - Keep provider selection separate from execution policy
+//
+// Does NOT handle:
+// - Retry
+// - Timeout
+// - Persistence
+// - Billing
+// - UI
 // ==========================================================
 
 import {
@@ -20,7 +34,7 @@ import type {
 
 export interface AIProviderResolutionSuccess {
   readonly resolved: true;
-  readonly provider: AIProvider;
+  readonly providers: readonly AIProvider[];
   readonly configuration: AIProviderConfiguration;
 }
 
@@ -73,13 +87,14 @@ export class DefaultAIProviderResolver
     const configuration =
       configurationResult.configuration;
 
-    const providerId =
+    const primaryProviderId =
       preferredProvider ??
       configuration.provider;
 
     if (
-      providerId !==
-      configuration.provider
+      preferredProvider &&
+      preferredProvider !==
+        configuration.provider
     ) {
       return {
         resolved: false,
@@ -88,12 +103,12 @@ export class DefaultAIProviderResolver
       };
     }
 
-    const provider =
+    const primaryProvider =
       this.registry.get(
-        providerId,
+        primaryProviderId,
       );
 
-    if (!provider) {
+    if (!primaryProvider) {
       return {
         resolved: false,
         reason:
@@ -101,9 +116,33 @@ export class DefaultAIProviderResolver
       };
     }
 
+    const providers: AIProvider[] = [
+      primaryProvider,
+    ];
+
+    for (
+      const providerId of this.registry.list()
+    ) {
+      if (
+        providerId ===
+        primaryProviderId
+      ) {
+        continue;
+      }
+
+      const provider =
+        this.registry.get(
+          providerId,
+        );
+
+      if (provider) {
+        providers.push(provider);
+      }
+    }
+
     return {
       resolved: true,
-      provider,
+      providers,
       configuration,
     };
   }
