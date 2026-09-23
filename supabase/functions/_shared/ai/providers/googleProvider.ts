@@ -1,23 +1,32 @@
 // ==========================================================
-// Mass Diamond — Google Provider
-// Provider adapter for the Mass Diamond AI Core.
+// Mass Diamond — Google AI Runtime Adapter
+//
+// External runtime adapter for Google Gemini.
+//
+// This adapter is intentionally isolated from:
+// - routing
+// - retry policy
+// - timeout policy
+// - persistence
+// - billing
+//
+// Mass Diamond AI Core owns orchestration.
+// Google is only one replaceable runtime.
 // ==========================================================
 
 import type {
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
-  AIProviderError,
 } from "../types";
-
-const GOOGLE_API_BASE_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models";
 
 export class GoogleProvider
   implements AIProvider
 {
-  public readonly id =
-    "google" as const;
+  public readonly id = "google";
+
+  public readonly runtimeKind =
+    "external" as const;
 
   public async execute(
     request: AIExecutionRequest,
@@ -35,7 +44,7 @@ export class GoogleProvider
         success: false,
         error: {
           code:
-            "GOOGLE_API_KEY_MISSING",
+            "GOOGLE_AI_API_KEY_MISSING",
           message:
             "Google AI API key is not configured.",
           provider: this.id,
@@ -47,133 +56,135 @@ export class GoogleProvider
     const startedAt = Date.now();
 
     try {
-      const systemInstruction =
-        this.extractSystemInstruction(
-          request,
+      const endpoint =
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          request.model.model,
+        )}:generateContent?key=${encodeURIComponent(
+          apiKey,
+        )}`;
+
+      const systemMessages =
+        request.messages.filter(
+          (message) =>
+            message.role === "system",
         );
 
-      const contents =
-        request.messages
-          .filter(
-            (message) =>
-              message.role !== "system",
-          )
-          .map((message) => ({
-            role:
-              message.role ===
-              "assistant"
-                ? "model"
-                : "user",
-            parts: [
-              {
-                text:
-                  message.content,
-              },
-            ],
-          }));
+      const conversationMessages =
+        request.messages.filter(
+          (message) =>
+            message.role !== "system",
+        );
 
-      const body: Record<
-        string,
-        unknown
-      > = {
-        contents,
-      };
-
-      if (systemInstruction) {
-        body.systemInstruction = {
-          parts: [
-            {
-              text:
-                systemInstruction,
-            },
-          ],
-        };
-      }
-
-      const generationConfig: Record<
-        string,
-        unknown
-      > = {};
-
-      if (
-        typeof request.model
-          .maxOutputTokens ===
-        "number"
-      ) {
-        generationConfig.maxOutputTokens =
-          request.model
-            .maxOutputTokens;
-      }
-
-      if (
-        typeof request.model
-          .temperature ===
-        "number"
-      ) {
-        generationConfig.temperature =
-          request.model
-            .temperature;
-      }
-
-      if (
-        Object.keys(
-          generationConfig,
-        ).length > 0
-      ) {
-        body.generationConfig =
-          generationConfig;
-      }
-
-      const url =
-        `${GOOGLE_API_BASE_URL}/` +
-        `${encodeURIComponent(request.model.model)}` +
-        `:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-      const response =
-        await fetch(url, {
+      const response = await fetch(
+        endpoint,
+        {
           method: "POST",
           headers: {
             "Content-Type":
               "application/json",
           },
-          body:
-            JSON.stringify(body),
-        });
-
-      const payload: unknown =
-        await response.json();
+          body: JSON.stringify({
+            ...(systemMessages.length > 0
+              ? {
+                  systemInstruction: {
+                    parts:
+                      systemMessages.map(
+                        (message) => ({
+                          text:
+                            message.content,
+                        }),
+                      ),
+                  },
+                }
+              : {}),
+            contents:
+              conversationMessages.map(
+                (message) => ({
+                  role:
+                    message.role ===
+                    "assistant"
+                      ? "model"
+                      : "user",
+                  parts: [
+                    {
+                      text:
+                        message.content,
+                    },
+                  ],
+                }),
+              ),
+            generationConfig: {
+              ...(request.model
+                .maxOutputTokens !==
+              undefined
+                ? {
+                    maxOutputTokens:
+                      request.model
+                        .maxOutputTokens,
+                  }
+                : {}),
+              ...(request.model
+                .temperature !==
+              undefined
+                ? {
+                    temperature:
+                      request.model
+                        .temperature,
+                  }
+                : {}),
+            },
+          }),
+        },
+      );
 
       if (!response.ok) {
+        const errorBody =
+          await this.readErrorBody(
+            response,
+          );
+
         return {
           success: false,
-          error:
-            this.createHttpError(
+          error: {
+            code:
+              "GOOGLE_AI_HTTP_ERROR",
+            message:
+              errorBody ??
+              `Google AI request failed with status ${response.status}.`,
+            provider: this.id,
+            retryable:
+              response.status === 408 ||
+              response.status === 409 ||
+              response.status === 429 ||
+              response.status >= 500,
+            statusCode:
               response.status,
-              payload,
-            ),
+          },
         };
       }
 
+      const data =
+        await response.json();
+
       const content =
-        this.extractContent(
-          payload,
-        );
+        this.extractContent(data);
 
       if (!content) {
         return {
           success: false,
           error: {
             code:
-              "GOOGLE_EMPTY_RESPONSE",
+              "GOOGLE_AI_EMPTY_RESPONSE",
             message:
               "Google AI returned an empty response.",
             provider: this.id,
             retryable: true,
-            statusCode:
-              response.status,
           },
         };
       }
+
+      const usage =
+        this.extractUsage(data);
 
       return {
         success: true,
@@ -185,13 +196,9 @@ export class GoogleProvider
             request.model.model,
           content,
           status: "success",
-          usage:
-            this.extractUsage(
-              payload,
-            ),
+          usage,
           latencyMs:
-            Date.now() -
-            startedAt,
+            Date.now() - startedAt,
         },
       };
     } catch (error) {
@@ -199,7 +206,7 @@ export class GoogleProvider
         success: false,
         error: {
           code:
-            "GOOGLE_NETWORK_ERROR",
+            "GOOGLE_AI_NETWORK_ERROR",
           message:
             this.getErrorMessage(
               error,
@@ -211,41 +218,19 @@ export class GoogleProvider
     }
   }
 
-  private extractSystemInstruction(
-    request: AIExecutionRequest,
-  ): string | undefined {
-    const messages =
-      request.messages.filter(
-        (message) =>
-          message.role === "system",
-      );
-
-    if (messages.length === 0) {
-      return undefined;
-    }
-
-    return messages
-      .map(
-        (message) =>
-          message.content,
-      )
-      .join("\n\n");
-  }
-
   private extractContent(
-    payload: unknown,
+    data: unknown,
   ): string | undefined {
     if (
-      typeof payload !==
-        "object" ||
-      payload === null
+      typeof data !== "object" ||
+      data === null
     ) {
       return undefined;
     }
 
     const candidates =
       (
-        payload as {
+        data as {
           candidates?: unknown;
         }
       ).candidates;
@@ -293,45 +278,47 @@ export class GoogleProvider
 
     const textParts =
       parts
-        .map(
-          (part) =>
-            typeof part ===
-              "object" &&
-            part !== null
-              ? (
-                  part as {
-                    text?: unknown;
-                  }
-                ).text
-              : undefined,
-        )
         .filter(
           (
-            value,
-          ): value is string =>
-            typeof value ===
-            "string",
+            part,
+          ): part is {
+            text: string;
+          } =>
+            typeof part ===
+              "object" &&
+            part !== null &&
+            typeof (
+              part as {
+                text?: unknown;
+              }
+            ).text === "string",
+        )
+        .map(
+          (part) =>
+            part.text,
         );
 
-    return textParts.length > 0
-      ? textParts.join("")
-      : undefined;
+    const result =
+      textParts
+        .join("")
+        .trim();
+
+    return result || undefined;
   }
 
   private extractUsage(
-    payload: unknown,
+    data: unknown,
   ) {
     if (
-      typeof payload !==
-        "object" ||
-      payload === null
+      typeof data !== "object" ||
+      data === null
     ) {
       return undefined;
     }
 
     const usage =
       (
-        payload as {
+        data as {
           usageMetadata?: unknown;
         }
       ).usageMetadata;
@@ -344,95 +331,80 @@ export class GoogleProvider
       return undefined;
     }
 
-    const data =
-      usage as {
-        promptTokenCount?: unknown;
-        candidatesTokenCount?: unknown;
-        totalTokenCount?: unknown;
-      };
+    const value = usage as {
+      promptTokenCount?: unknown;
+      candidatesTokenCount?: unknown;
+      totalTokenCount?: unknown;
+    };
 
     return {
       inputTokens:
-        this.readNumber(
-          data.promptTokenCount,
+        this.toNumber(
+          value.promptTokenCount,
         ),
       outputTokens:
-        this.readNumber(
-          data.candidatesTokenCount,
+        this.toNumber(
+          value.candidatesTokenCount,
         ),
       totalTokens:
-        this.readNumber(
-          data.totalTokenCount,
+        this.toNumber(
+          value.totalTokenCount,
         ),
     };
   }
 
-  private createHttpError(
-    statusCode: number,
-    payload: unknown,
-  ): AIProviderError {
-    return {
-      code:
-        `GOOGLE_HTTP_${statusCode}`,
-      message:
-        this.extractErrorMessage(
-          payload,
-        ) ??
-        "Google AI request failed.",
-      provider: this.id,
-      retryable:
-        statusCode === 408 ||
-        statusCode === 409 ||
-        statusCode === 429 ||
-        statusCode >= 500,
-      statusCode,
-    };
-  }
+  private async readErrorBody(
+    response: Response,
+  ): Promise<string | undefined> {
+    try {
+      const data =
+        await response.json();
 
-  private extractErrorMessage(
-    payload: unknown,
-  ): string | undefined {
-    if (
-      typeof payload !==
-        "object" ||
-      payload === null
-    ) {
+      if (
+        typeof data !== "object" ||
+        data === null
+      ) {
+        return undefined;
+      }
+
+      const error =
+        (
+          data as {
+            error?: unknown;
+          }
+        ).error;
+
+      if (
+        typeof error === "object" &&
+        error !== null
+      ) {
+        const message =
+          (
+            error as {
+              message?: unknown;
+            }
+          ).message;
+
+        if (
+          typeof message ===
+          "string"
+        ) {
+          return message;
+        }
+      }
+
+      return undefined;
+    } catch {
       return undefined;
     }
-
-    const error =
-      (
-        payload as {
-          error?: unknown;
-        }
-      ).error;
-
-    if (
-      typeof error !==
-        "object" ||
-      error === null
-    ) {
-      return undefined;
-    }
-
-    const message =
-      (
-        error as {
-          message?: unknown;
-        }
-      ).message;
-
-    return typeof message ===
-      "string"
-      ? message
-      : undefined;
   }
 
-  private readNumber(
+  private toNumber(
     value: unknown,
   ): number | undefined {
     return typeof value ===
-      "number"
+      "number" &&
+      Number.isFinite(value)
       ? value
       : undefined;
   }
