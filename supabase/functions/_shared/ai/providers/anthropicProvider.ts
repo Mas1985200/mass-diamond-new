@@ -12,9 +12,14 @@
 //
 // Mass Diamond AI Core owns orchestration.
 // Anthropic is only one replaceable runtime.
+//
+// The execution context is provider-neutral. The adapter only
+// uses the optional AbortSignal to cancel the underlying HTTP
+// request when supported by the runtime.
 // ==========================================================
 
 import type {
+  AIExecutionContext,
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
@@ -23,16 +28,20 @@ import type {
 export class AnthropicProvider
   implements AIProvider
 {
-  public readonly id = "anthropic";
+  public readonly id =
+    "anthropic";
 
   public readonly runtimeKind =
     "external" as const;
 
   public async execute(
     request: AIExecutionRequest,
+    context?: AIExecutionContext,
   ): Promise<AIExecutionResult> {
     const apiKey =
-      Deno.env.get("ANTHROPIC_API_KEY");
+      Deno.env.get(
+        "ANTHROPIC_API_KEY",
+      );
 
     if (!apiKey) {
       return {
@@ -40,69 +49,97 @@ export class AnthropicProvider
         error: {
           code:
             "ANTHROPIC_API_KEY_MISSING",
+
           message:
             "Anthropic API key is not configured.",
-          provider: this.id,
+
+          provider:
+            this.id,
+
           retryable: false,
         },
       };
     }
 
-    const startedAt = Date.now();
+    const startedAt =
+      Date.now();
 
     try {
       const systemMessages =
         request.messages.filter(
           (message) =>
-            message.role === "system",
+            message.role ===
+            "system",
         );
 
       const conversationMessages =
         request.messages.filter(
           (message) =>
-            message.role !== "system",
+            message.role !==
+            "system",
         );
 
-      const response = await fetch(
-        "https://api.anthropic.com/v1/messages",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version":
-              "2023-06-01",
+      const response =
+        await fetch(
+          "https://api.anthropic.com/v1/messages",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              "x-api-key":
+                apiKey,
+
+              "anthropic-version":
+                "2023-06-01",
+            },
+
+            body: JSON.stringify({
+              model:
+                request.model.model,
+
+              max_tokens:
+                request.model
+                  .maxOutputTokens ??
+                4096,
+
+              temperature:
+                request.model
+                  .temperature,
+
+              ...(systemMessages.length >
+              0
+                ? {
+                    system:
+                      systemMessages
+                        .map(
+                          (message) =>
+                            message.content,
+                        )
+                        .join(
+                          "\n\n",
+                        ),
+                  }
+                : {}),
+
+              messages:
+                conversationMessages.map(
+                  (message) => ({
+                    role:
+                      message.role,
+
+                    content:
+                      message.content,
+                  }),
+                ),
+            }),
+
+            signal:
+              context?.signal,
           },
-          body: JSON.stringify({
-            model: request.model.model,
-            max_tokens:
-              request.model
-                .maxOutputTokens ?? 4096,
-            temperature:
-              request.model.temperature,
-            ...(systemMessages.length > 0
-              ? {
-                  system:
-                    systemMessages
-                      .map(
-                        (message) =>
-                          message.content,
-                      )
-                      .join("\n\n"),
-                }
-              : {}),
-            messages:
-              conversationMessages.map(
-                (message) => ({
-                  role: message.role,
-                  content:
-                    message.content,
-                }),
-              ),
-          }),
-        },
-      );
+        );
 
       if (!response.ok) {
         const errorBody =
@@ -115,15 +152,20 @@ export class AnthropicProvider
           error: {
             code:
               "ANTHROPIC_HTTP_ERROR",
+
             message:
               errorBody ??
               `Anthropic request failed with status ${response.status}.`,
-            provider: this.id,
+
+            provider:
+              this.id,
+
             retryable:
               response.status === 408 ||
               response.status === 409 ||
               response.status === 429 ||
               response.status >= 500,
+
             statusCode:
               response.status,
           },
@@ -134,7 +176,9 @@ export class AnthropicProvider
         await response.json();
 
       const content =
-        this.extractContent(data);
+        this.extractContent(
+          data,
+        );
 
       if (!content) {
         return {
@@ -142,43 +186,87 @@ export class AnthropicProvider
           error: {
             code:
               "ANTHROPIC_EMPTY_RESPONSE",
+
             message:
               "Anthropic returned an empty response.",
-            provider: this.id,
+
+            provider:
+              this.id,
+
             retryable: true,
           },
         };
       }
 
       const usage =
-        this.extractUsage(data);
+        this.extractUsage(
+          data,
+        );
 
       return {
         success: true,
         response: {
           requestId:
             request.requestId,
-          provider: this.id,
+
+          provider:
+            this.id,
+
           model:
             request.model.model,
+
           content,
-          status: "success",
+
+          status:
+            "success",
+
           usage,
+
           latencyMs:
-            Date.now() - startedAt,
+            Math.max(
+              0,
+              Date.now() -
+                startedAt,
+            ),
         },
       };
     } catch (error) {
+      if (
+        this.isAbortError(
+          error,
+        )
+      ) {
+        return {
+          success: false,
+          error: {
+            code:
+              "ANTHROPIC_REQUEST_ABORTED",
+
+            message:
+              "Anthropic request was aborted.",
+
+            provider:
+              this.id,
+
+            retryable: false,
+          },
+        };
+      }
+
       return {
         success: false,
         error: {
           code:
             "ANTHROPIC_NETWORK_ERROR",
+
           message:
             this.getErrorMessage(
               error,
             ),
-          provider: this.id,
+
+          provider:
+            this.id,
+
           retryable: true,
         },
       };
@@ -189,7 +277,8 @@ export class AnthropicProvider
     data: unknown,
   ): string | undefined {
     if (
-      typeof data !== "object" ||
+      typeof data !==
+        "object" ||
       data === null
     ) {
       return undefined;
@@ -202,7 +291,11 @@ export class AnthropicProvider
         }
       ).content;
 
-    if (!Array.isArray(content)) {
+    if (
+      !Array.isArray(
+        content,
+      )
+    ) {
       return undefined;
     }
 
@@ -222,12 +315,14 @@ export class AnthropicProvider
               block as {
                 type?: unknown;
               }
-            ).type === "text" &&
+            ).type ===
+              "text" &&
             typeof (
               block as {
                 text?: unknown;
               }
-            ).text === "string",
+            ).text ===
+              "string",
         )
         .map(
           (block) =>
@@ -239,14 +334,17 @@ export class AnthropicProvider
         .join("")
         .trim();
 
-    return result || undefined;
+    return (
+      result || undefined
+    );
   }
 
   private extractUsage(
     data: unknown,
   ) {
     if (
-      typeof data !== "object" ||
+      typeof data !==
+        "object" ||
       data === null
     ) {
       return undefined;
@@ -267,10 +365,14 @@ export class AnthropicProvider
       return undefined;
     }
 
-    const value = usage as {
-      input_tokens?: unknown;
-      output_tokens?: unknown;
-    };
+    const value =
+      usage as {
+        input_tokens?:
+          unknown;
+
+        output_tokens?:
+          unknown;
+      };
 
     const inputTokens =
       this.toNumber(
@@ -284,10 +386,14 @@ export class AnthropicProvider
 
     return {
       inputTokens,
+
       outputTokens,
+
       totalTokens:
-        inputTokens !== undefined &&
-        outputTokens !== undefined
+        inputTokens !==
+          undefined &&
+        outputTokens !==
+          undefined
           ? inputTokens +
             outputTokens
           : undefined,
@@ -296,13 +402,16 @@ export class AnthropicProvider
 
   private async readErrorBody(
     response: Response,
-  ): Promise<string | undefined> {
+  ): Promise<
+    string | undefined
+  > {
     try {
       const data =
         await response.json();
 
       if (
-        typeof data !== "object" ||
+        typeof data !==
+          "object" ||
         data === null
       ) {
         return undefined;
@@ -316,7 +425,8 @@ export class AnthropicProvider
         ).error;
 
       if (
-        typeof error === "object" &&
+        typeof error ===
+          "object" &&
         error !== null
       ) {
         const message =
@@ -345,15 +455,40 @@ export class AnthropicProvider
   ): number | undefined {
     return typeof value ===
       "number" &&
-      Number.isFinite(value)
+      Number.isFinite(
+        value,
+      )
       ? value
       : undefined;
+  }
+
+  private isAbortError(
+    error: unknown,
+  ): boolean {
+    if (
+      typeof error !==
+        "object" ||
+      error === null
+    ) {
+      return false;
+    }
+
+    const candidate =
+      error as {
+        name?: unknown;
+      };
+
+    return (
+      candidate.name ===
+      "AbortError"
+    );
   }
 
   private getErrorMessage(
     error: unknown,
   ): string {
-    return error instanceof Error
+    return error instanceof
+      Error
       ? error.message
       : "Unknown Anthropic network error.";
   }
