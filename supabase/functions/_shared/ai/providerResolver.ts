@@ -1,20 +1,28 @@
 // ==========================================================
 // Mass Diamond — AI Provider Resolver
 //
-// Resolves configured AI providers into an ordered
-// execution chain without exposing provider secrets.
+// Resolves AI runtime adapters independently from execution
+// policy.
 //
 // Responsibilities:
-// - Resolve configured provider
-// - Build ordered provider chain
-// - Keep provider selection separate from execution policy
+// - Find registered runtime adapters.
+// - Resolve an explicitly requested runtime.
+// - Resolve the configured runtime when no explicit runtime
+//   is requested.
+// - Keep provider/model policy separate from execution.
 //
 // Does NOT handle:
 // - Retry
 // - Timeout
 // - Persistence
 // - Billing
-// - UI
+// - Network execution
+// - Provider-specific API logic
+//
+// Runtime adapters may represent:
+// - External runtimes
+// - Self-hosted runtimes
+// - Mass Diamond-native runtimes
 // ==========================================================
 
 import {
@@ -35,7 +43,7 @@ import type {
 export interface AIProviderResolutionSuccess {
   readonly resolved: true;
   readonly providers: readonly AIProvider[];
-  readonly configuration: AIProviderConfiguration;
+  readonly configuration?: AIProviderConfiguration;
 }
 
 export interface AIProviderResolutionFailure {
@@ -74,32 +82,21 @@ export class DefaultAIProviderResolver
     const configurationResult =
       getAIProviderConfiguration();
 
-    if (
-      !configurationResult.configured
-    ) {
-      return {
-        resolved: false,
-        reason:
-          configurationResult.reason,
-      };
-    }
-
-    const configuration =
-      configurationResult.configuration;
+    const configuredProviderId =
+      configurationResult.configured
+        ? configurationResult
+            .configuration.provider
+        : undefined;
 
     const primaryProviderId =
       preferredProvider ??
-      configuration.provider;
+      configuredProviderId;
 
-    if (
-      preferredProvider &&
-      preferredProvider !==
-        configuration.provider
-    ) {
+    if (!primaryProviderId) {
       return {
         resolved: false,
         reason:
-          "INVALID_PROVIDER_CONFIG",
+          "NO_PROVIDER_CONFIGURED",
       };
     }
 
@@ -143,7 +140,10 @@ export class DefaultAIProviderResolver
     return {
       resolved: true,
       providers,
-      configuration,
+      configuration:
+        configurationResult.configured
+          ? configurationResult.configuration
+          : undefined,
     };
   }
 }
