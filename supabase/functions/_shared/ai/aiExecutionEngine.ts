@@ -7,6 +7,7 @@
 // Responsibilities:
 // - Execute provider/model targets
 // - Timeout protection
+// - Cancellation context
 // - Controlled retry
 // - Ordered fallback
 // - Provider-neutral error handling
@@ -26,15 +27,13 @@
 // Self-hosted and Mass Diamond-native runtimes can use
 // the same execution contract in the future.
 //
-// IMPORTANT:
-// The current AIProvider contract does not expose AbortSignal.
-// Therefore timeout protection prevents the coordinator from
-// waiting indefinitely, but cannot cancel an underlying provider
-// request yet. True request cancellation can be introduced later
-// through a backward-compatible execution context contract.
+// Cancellation is supplied through AIExecutionContext.
+// Runtime adapters decide how to apply the signal to their
+// underlying execution mechanism.
 // ==========================================================
 
 import type {
+  AIExecutionContext,
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
@@ -98,7 +97,9 @@ export class DefaultAIExecutionEngine
     policyOverrides: Partial<AIExecutionPolicy> = {},
   ): Promise<AIExecutionEngineResult> {
     const policyResult =
-      this.normalizePolicy(policyOverrides);
+      this.normalizePolicy(
+        policyOverrides,
+      );
 
     if (!policyResult.valid) {
       return {
@@ -270,6 +271,9 @@ export class DefaultAIExecutionEngine
     provider: AIProvider,
     timeoutMs: number,
   ): Promise<AIExecutionResult> {
+    const controller =
+      new AbortController();
+
     let timeoutHandle:
       | ReturnType<typeof setTimeout>
       | undefined;
@@ -280,6 +284,8 @@ export class DefaultAIExecutionEngine
           (resolve) => {
             timeoutHandle =
               setTimeout(() => {
+                controller.abort();
+
                 resolve({
                   success: false,
                   error: {
@@ -299,13 +305,46 @@ export class DefaultAIExecutionEngine
           },
         );
 
+      const executionContext:
+        AIExecutionContext = {
+        signal:
+          controller.signal,
+
+        runtimeKind:
+          provider.runtimeKind,
+
+        metadata:
+          request.metadata,
+      };
+
       return await Promise.race([
         provider.execute(
           request,
+          executionContext,
         ),
         timeoutPromise,
       ]);
     } catch (error) {
+      if (
+        controller.signal.aborted
+      ) {
+        return {
+          success: false,
+          error: {
+            code:
+              "AI_PROVIDER_ABORTED",
+
+            message:
+              `AI runtime ${provider.id} execution was aborted.`,
+
+            provider:
+              provider.id,
+
+            retryable: true,
+          },
+        };
+      }
+
       return {
         success: false,
         error: {
@@ -332,21 +371,30 @@ export class DefaultAIExecutionEngine
           timeoutHandle,
         );
       }
+
+      if (
+        !controller.signal.aborted
+      ) {
+        controller.abort();
+      }
     }
   }
 
   private normalizePolicy(
-    overrides: Partial<AIExecutionPolicy>,
+    overrides:
+      Partial<AIExecutionPolicy>,
   ):
     | {
         readonly valid: true;
-        readonly policy: AIExecutionPolicy;
+        readonly policy:
+          AIExecutionPolicy;
       }
     | {
         readonly valid: false;
         readonly message: string;
       } {
-    const policy: AIExecutionPolicy = {
+    const policy:
+      AIExecutionPolicy = {
       ...DEFAULT_POLICY,
       ...overrides,
     };
