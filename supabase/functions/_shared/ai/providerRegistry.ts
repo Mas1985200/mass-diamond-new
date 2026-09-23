@@ -1,6 +1,6 @@
 // ==========================================================
 // Mass Diamond — AI Provider Registry
-// Central registry for server-side AI provider resolution.
+// Central registry for provider adapters.
 // ==========================================================
 
 import type {
@@ -8,18 +8,23 @@ import type {
   AIProviderId,
 } from "./types";
 
-export interface AIProviderRegistry {
-  register(
-    provider: AIProvider,
-  ): void;
+import { OpenAIProvider } from "./providers/openaiProvider";
+import { AnthropicProvider } from "./providers/anthropicProvider";
+import { GoogleProvider } from "./providers/googleProvider";
+import { GroqProvider } from "./providers/groqProvider";
 
+export interface AIProviderRegistry {
   get(
     providerId: AIProviderId,
-  ): AIProvider | null;
+  ): AIProvider | undefined;
 
   has(
     providerId: AIProviderId,
   ): boolean;
+
+  register(
+    provider: AIProvider,
+  ): void;
 
   list(): readonly AIProviderId[];
 }
@@ -28,55 +33,34 @@ export class DefaultAIProviderRegistry
   implements AIProviderRegistry
 {
   private readonly providers =
-    new Map<
-      AIProviderId,
-      AIProvider
-    >();
+    new Map<AIProviderId, AIProvider>();
 
-  public register(
-    provider: AIProvider,
-  ): void {
-    if (
-      !provider ||
-      typeof provider.id !==
-        "string"
-    ) {
-      throw new Error(
-        "Invalid AI provider registration.",
-      );
+  public constructor(
+    providers: readonly AIProvider[] = [],
+  ) {
+    for (const provider of providers) {
+      this.register(provider);
     }
-
-    if (
-      this.providers.has(
-        provider.id,
-      )
-    ) {
-      throw new Error(
-        `AI provider "${provider.id}" is already registered.`,
-      );
-    }
-
-    this.providers.set(
-      provider.id,
-      provider,
-    );
   }
 
   public get(
     providerId: AIProviderId,
-  ): AIProvider | null {
-    return (
-      this.providers.get(
-        providerId,
-      ) ?? null
-    );
+  ): AIProvider | undefined {
+    return this.providers.get(providerId);
   }
 
   public has(
     providerId: AIProviderId,
   ): boolean {
-    return this.providers.has(
-      providerId,
+    return this.providers.has(providerId);
+  }
+
+  public register(
+    provider: AIProvider,
+  ): void {
+    this.providers.set(
+      provider.id,
+      provider,
     );
   }
 
@@ -88,4 +72,9 @@ export class DefaultAIProviderRegistry
 }
 
 export const aiProviderRegistry =
-  new DefaultAIProviderRegistry();
+  new DefaultAIProviderRegistry([
+    new OpenAIProvider(),
+    new AnthropicProvider(),
+    new GoogleProvider(),
+    new GroqProvider(),
+  ]);
