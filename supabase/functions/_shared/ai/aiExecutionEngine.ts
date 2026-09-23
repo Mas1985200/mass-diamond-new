@@ -10,6 +10,8 @@
 // - Controlled retry
 // - Ordered fallback
 // - Provider-neutral error handling
+// - Execution policy normalization
+// - Execution attempt tracking
 //
 // This layer intentionally does NOT handle:
 // - UI
@@ -23,6 +25,13 @@
 // External providers are runtime adapters only.
 // Self-hosted and Mass Diamond-native runtimes can use
 // the same execution contract in the future.
+//
+// IMPORTANT:
+// The current AIProvider contract does not expose AbortSignal.
+// Therefore timeout protection prevents the coordinator from
+// waiting indefinitely, but cannot cancel an underlying provider
+// request yet. True request cancellation can be introduced later
+// through a backward-compatible execution context contract.
 // ==========================================================
 
 import type {
@@ -71,6 +80,15 @@ const DEFAULT_POLICY: AIExecutionPolicy = {
   retryDelayMs: 500,
 };
 
+const MIN_TIMEOUT_MS = 1_000;
+const MAX_TIMEOUT_MS = 120_000;
+
+const MIN_RETRIES = 0;
+const MAX_RETRIES = 3;
+
+const MIN_RETRY_DELAY_MS = 0;
+const MAX_RETRY_DELAY_MS = 10_000;
+
 export class DefaultAIExecutionEngine
   implements AIExecutionEngine
 {
@@ -79,17 +97,35 @@ export class DefaultAIExecutionEngine
     plan: AIExecutionPlan,
     policyOverrides: Partial<AIExecutionPolicy> = {},
   ): Promise<AIExecutionEngineResult> {
-    const policy: AIExecutionPolicy = {
-      ...DEFAULT_POLICY,
-      ...policyOverrides,
-    };
+    const policyResult =
+      this.normalizePolicy(policyOverrides);
+
+    if (!policyResult.valid) {
+      return {
+        result: {
+          success: false,
+          error: {
+            code:
+              "INVALID_AI_EXECUTION_POLICY",
+            message:
+              policyResult.message,
+            retryable: false,
+          },
+        },
+        attempts: [],
+      };
+    }
+
+    const policy =
+      policyResult.policy;
 
     if (plan.targets.length === 0) {
       return {
         result: {
           success: false,
           error: {
-            code: "NO_AI_EXECUTION_TARGET_AVAILABLE",
+            code:
+              "NO_AI_EXECUTION_TARGET_AVAILABLE",
             message:
               "No AI execution target is available.",
             retryable: false,
@@ -99,9 +135,12 @@ export class DefaultAIExecutionEngine
       };
     }
 
-    const attempts: AIExecutionAttempt[] = [];
+    const attempts:
+      AIExecutionAttempt[] = [];
 
-    let lastFailure: AIExecutionResult | undefined;
+    let lastFailure:
+      | AIExecutionResult
+      | undefined;
 
     for (
       const target of plan.targets
@@ -121,9 +160,12 @@ export class DefaultAIExecutionEngine
         };
       }
 
-      lastFailure = providerResult;
+      lastFailure =
+        providerResult;
 
-      if (!providerResult.error.retryable) {
+      if (
+        !providerResult.error.retryable
+      ) {
         break;
       }
     }
@@ -154,9 +196,11 @@ export class DefaultAIExecutionEngine
       attempt <= totalAttempts;
       attempt += 1
     ) {
-      const startedAt = Date.now();
+      const startedAt =
+        Date.now();
 
-      const executionRequest: AIExecutionRequest = {
+      const executionRequest:
+        AIExecutionRequest = {
         ...request,
         model: target.model,
       };
@@ -169,24 +213,37 @@ export class DefaultAIExecutionEngine
         );
 
       const latencyMs =
-        Date.now() - startedAt;
+        Math.max(
+          0,
+          Date.now() - startedAt,
+        );
 
       attempts.push({
-        provider: target.provider.id,
-        model: target.model.model,
+        provider:
+          target.provider.id,
+
+        model:
+          target.model.model,
+
         attempt,
+
         latencyMs,
-        success: result.success,
-        errorCode: result.success
-          ? undefined
-          : result.error.code,
+
+        success:
+          result.success,
+
+        errorCode:
+          result.success
+            ? undefined
+            : result.error.code,
       });
 
       if (result.success) {
         return result;
       }
 
-      lastResult = result;
+      lastResult =
+        result;
 
       if (
         !result.error.retryable ||
@@ -228,10 +285,13 @@ export class DefaultAIExecutionEngine
                   error: {
                     code:
                       "AI_PROVIDER_TIMEOUT",
+
                     message:
                       `AI runtime ${provider.id} exceeded the ${timeoutMs}ms execution timeout.`,
+
                     provider:
                       provider.id,
+
                     retryable: true,
                   },
                 });
@@ -240,7 +300,9 @@ export class DefaultAIExecutionEngine
         );
 
       return await Promise.race([
-        provider.execute(request),
+        provider.execute(
+          request,
+        ),
         timeoutPromise,
       ]);
     } catch (error) {
@@ -249,17 +311,98 @@ export class DefaultAIExecutionEngine
         error: {
           code:
             "AI_PROVIDER_EXECUTION_ERROR",
+
           message:
-            this.getErrorMessage(error),
-          provider: provider.id,
+            this.getErrorMessage(
+              error,
+            ),
+
+          provider:
+            provider.id,
+
           retryable: true,
         },
       };
     } finally {
-      if (timeoutHandle !== undefined) {
-        clearTimeout(timeoutHandle);
+      if (
+        timeoutHandle !==
+        undefined
+      ) {
+        clearTimeout(
+          timeoutHandle,
+        );
       }
     }
+  }
+
+  private normalizePolicy(
+    overrides: Partial<AIExecutionPolicy>,
+  ):
+    | {
+        readonly valid: true;
+        readonly policy: AIExecutionPolicy;
+      }
+    | {
+        readonly valid: false;
+        readonly message: string;
+      } {
+    const policy: AIExecutionPolicy = {
+      ...DEFAULT_POLICY,
+      ...overrides,
+    };
+
+    if (
+      !Number.isFinite(
+        policy.timeoutMs,
+      ) ||
+      policy.timeoutMs <
+        MIN_TIMEOUT_MS ||
+      policy.timeoutMs >
+        MAX_TIMEOUT_MS
+    ) {
+      return {
+        valid: false,
+        message:
+          `timeoutMs must be between ${MIN_TIMEOUT_MS} and ${MAX_TIMEOUT_MS}.`,
+      };
+    }
+
+    if (
+      !Number.isInteger(
+        policy.maxRetries,
+      ) ||
+      policy.maxRetries <
+        MIN_RETRIES ||
+      policy.maxRetries >
+        MAX_RETRIES
+    ) {
+      return {
+        valid: false,
+        message:
+          `maxRetries must be an integer between ${MIN_RETRIES} and ${MAX_RETRIES}.`,
+      };
+    }
+
+    if (
+      !Number.isFinite(
+        policy.retryDelayMs,
+      ) ||
+      policy.retryDelayMs <
+        MIN_RETRY_DELAY_MS ||
+      policy.retryDelayMs >
+        MAX_RETRY_DELAY_MS
+    ) {
+      return {
+        valid: false,
+        message:
+          `retryDelayMs must be between ${MIN_RETRY_DELAY_MS} and ${MAX_RETRY_DELAY_MS}.`,
+      };
+    }
+
+    return {
+      valid: true,
+      policy,
+    };
   }
 
   private async delay(
@@ -285,11 +428,18 @@ export class DefaultAIExecutionEngine
     return {
       success: false,
       error: {
-        code: "AI_EXECUTION_FAILED",
+        code:
+          "AI_EXECUTION_FAILED",
+
         message:
           "AI execution failed without a runtime response.",
+
         provider:
-          provider as AIProviderError["provider"],
+          provider as
+            AIProviderError[
+              "provider"
+            ],
+
         retryable: true,
       },
     };
