@@ -1,29 +1,32 @@
 // ==========================================================
 // Mass Diamond — AI Runtime Coordinator
 //
-// Coordinates the AI execution pipeline:
+// Coordinates the complete provider-neutral AI execution
+// pipeline:
 //
-//   Policy
-//      ↓
-//   Provider Resolver
-//      ↓
-//   Execution Plan
-//      ↓
-//   Execution Engine
+// Policy
+//   ↓
+// Provider Resolution
+//   ↓
+// Execution Plan
+//   ↓
+// Execution Engine
 //
-// This layer owns orchestration only.
+// Responsibilities:
+// - Resolve the active execution policy.
+// - Resolve available runtime adapters.
+// - Build an ordered execution plan.
+// - Delegate execution to the runtime engine.
+// - Preserve provider/runtime neutrality.
 //
-// It does NOT handle:
-// - authentication
-// - persistence
-// - billing
-// - routing
-// - provider-specific API logic
-// - UI
-//
-// The coordinator is intentionally runtime-neutral.
-// External, self-hosted, and Mass Diamond-native runtimes
-// can all participate through the same contracts.
+// Does NOT handle:
+// - Authentication
+// - Persistence
+// - Billing
+// - Conversation management
+// - Capability routing
+// - Provider-specific API logic
+// - Direct network execution
 // ==========================================================
 
 import type {
@@ -52,10 +55,17 @@ import {
 } from "./aiExecutionEngine";
 
 export interface AIRuntimeCoordinatorDependencies {
-  readonly policyResolver: AIExecutionPolicyResolver;
-  readonly providerResolver: AIProviderResolver;
-  readonly planBuilder: AIExecutionPlanBuilder;
-  readonly executionEngine: AIExecutionEngine;
+  readonly policyResolver:
+    AIExecutionPolicyResolver;
+
+  readonly providerResolver:
+    AIProviderResolver;
+
+  readonly planBuilder:
+    AIExecutionPlanBuilder;
+
+  readonly executionEngine:
+    AIExecutionEngine;
 }
 
 export interface AIRuntimeExecutionOptions {
@@ -78,10 +88,10 @@ export class DefaultAIRuntimeCoordinator
     AIRuntimeCoordinatorDependencies;
 
   public constructor(
-    dependencies: AIRuntimeCoordinatorDependencies,
+    dependencies:
+      AIRuntimeCoordinatorDependencies,
   ) {
-    this.dependencies =
-      dependencies;
+    this.dependencies = dependencies;
   }
 
   public async execute(
@@ -102,14 +112,17 @@ export class DefaultAIRuntimeCoordinator
           success: false,
           error: {
             code:
-              `AI_RUNTIME_RESOLUTION_FAILED`,
+              "AI_RUNTIME_RESOLUTION_FAILED",
+
             message:
               this.getResolutionErrorMessage(
                 resolution.reason,
               ),
+
             retryable: false,
           },
         },
+
         attempts: [],
       };
     }
@@ -119,6 +132,25 @@ export class DefaultAIRuntimeCoordinator
         policy,
         resolution.providers,
       );
+
+    if (plan.targets.length === 0) {
+      return {
+        result: {
+          success: false,
+          error: {
+            code:
+              "AI_RUNTIME_PLAN_EMPTY",
+
+            message:
+              "No executable AI runtime target is available.",
+
+            retryable: false,
+          },
+        },
+
+        attempts: [],
+      };
+    }
 
     return this.dependencies.executionEngine.execute(
       request,
