@@ -1,4 +1,30 @@
+// ==========================================================
+// Mass Diamond — Core AI Chat Edge Function
+//
+// Responsibilities:
+// - CORS / HTTP method handling
+// - Request parsing and validation
+// - Supabase authentication
+// - Conversation ownership validation
+// - Trusted user-message persistence
+// - AI conversation-context loading
+// - AI Runtime Coordinator execution
+// - Trusted assistant-message persistence
+// - Stable API responses
+//
+// Provider execution remains inside AI Core.
+// This function must never expose provider secrets.
+// ==========================================================
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+import {
+  aiRuntimeCoordinator,
+} from "../_shared/ai/aiRuntimeCoordinator";
+
+import type {
+  AIExecutionRequest,
+} from "../_shared/ai/types";
 
 interface ChatRequest {
   readonly message?: unknown;
@@ -11,6 +37,16 @@ interface ChatRequest {
 
 interface AuthenticatedUser {
   readonly id: string;
+}
+
+interface ConversationRecord {
+  readonly id: string;
+  readonly user_id: string;
+}
+
+interface ChatMessageRecord {
+  readonly role: "user" | "assistant";
+  readonly content: string;
 }
 
 interface ErrorResponse {
@@ -36,6 +72,10 @@ interface SuccessResponse {
   };
 }
 
+type ApiResponse =
+  | ErrorResponse
+  | SuccessResponse;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -44,8 +84,11 @@ const corsHeaders = {
     "POST, OPTIONS",
 };
 
+const MAX_MESSAGE_LENGTH = 32_000;
+const MAX_HISTORY_MESSAGES = 40;
+
 function jsonResponse(
-  body: ErrorResponse | SuccessResponse,
+  body: ApiResponse,
   status: number,
 ): Response {
   return new Response(
@@ -91,7 +134,7 @@ function getOptionalString(
     return undefined;
   }
 
-  return stringValue;
+  return stringValue.trim();
 }
 
 function createRequestId(
@@ -123,19 +166,12 @@ function getBearerToken(
       /^Bearer\s+(.+)$/i,
     );
 
-  return match?.[1] ?? null;
+  return match?.[1]?.trim() ?? null;
 }
 
-async function getAuthenticatedUser(
-  request: Request,
-): Promise<AuthenticatedUser | null> {
-  const accessToken =
-    getBearerToken(request);
-
-  if (!accessToken) {
-    return null;
-  }
-
+function createSupabaseClient(
+  accessToken: string,
+) {
   const supabaseUrl =
     Deno.env.get(
       "SUPABASE_URL",
@@ -155,22 +191,69 @@ async function getAuthenticatedUser(
     );
   }
 
-  const supabase =
-    createClient(
-      supabaseUrl,
-      supabaseAnonKey,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-        global: {
-          headers: {
-            Authorization:
-              `Bearer ${accessToken}`,
-          },
+  return createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`,
         },
       },
+    },
+  );
+}
+
+function createAdminSupabaseClient() {
+  const supabaseUrl =
+    Deno.env.get(
+      "SUPABASE_URL",
+    );
+
+  const serviceRoleKey =
+    Deno.env.get(
+      "SUPABASE_SERVICE_ROLE_KEY",
+    );
+
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
+    throw new Error(
+      "Supabase server configuration is incomplete.",
+    );
+  }
+
+  return createClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    },
+  );
+}
+
+async function getAuthenticatedUser(
+  request: Request,
+): Promise<AuthenticatedUser | null> {
+  const accessToken =
+    getBearerToken(request);
+
+  if (!accessToken) {
+    return null;
+  }
+
+  const supabase =
+    createSupabaseClient(
+      accessToken,
     );
 
   const {
@@ -181,7 +264,10 @@ async function getAuthenticatedUser(
       accessToken,
     );
 
-  if (error || !data.user) {
+  if (
+    error ||
+    !data.user
+  ) {
     return null;
   }
 
@@ -205,7 +291,8 @@ function validateMessage(
 
   if (
     normalized.length === 0 ||
-    normalized.length > 32_000
+    normalized.length >
+      MAX_MESSAGE_LENGTH
   ) {
     return null;
   }
@@ -232,6 +319,25 @@ function validateCapability(
   return capability;
 }
 
+function validateLanguage(
+  value: unknown,
+): string | undefined {
+  const language =
+    getOptionalString(value);
+
+  if (!language) {
+    return undefined;
+  }
+
+  if (
+    language.length > 20
+  ) {
+    return undefined;
+  }
+
+  return language;
+}
+
 async function parseRequest(
   request: Request,
 ): Promise<ChatRequest | null> {
@@ -249,11 +355,333 @@ async function parseRequest(
   }
 }
 
+async function getConversation(
+  supabase: ReturnType<
+    typeof createAdminSupabaseClient
+  >,
+  conversationId: string,
+  userId: string,
+): Promise<
+  ConversationRecord | null
+> {
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from("chat_conversations")
+      .select(
+        "id, user_id",
+      )
+      .eq(
+        "id",
+        conversationId,
+      )
+      .eq(
+        "user_id",
+        userId,
+      )
+      .maybeSingle();
+
+  if (error) {
+    throw new Error(
+      "Failed to validate conversation ownership.",
+    );
+  }
+
+  return data as
+    | ConversationRecord
+    | null;
+}
+
+async function createConversation(
+  supabase: ReturnType<
+    typeof createAdminSupabaseClient
+  >,
+  userId: string,
+): Promise<ConversationRecord> {
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from("chat_conversations")
+      .insert({
+        user_id: userId,
+      })
+      .select(
+        "id, user_id",
+      )
+      .single();
+
+  if (
+    error ||
+    !data
+  ) {
+    throw new Error(
+      "Failed to create conversation.",
+    );
+  }
+
+  return data as ConversationRecord;
+}
+
+async function loadConversationMessages(
+  supabase: ReturnType<
+    typeof createAdminSupabaseClient
+  >,
+  conversationId: string,
+  userId: string,
+): Promise<
+  readonly ChatMessageRecord[]
+> {
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from("chat_messages")
+      .select(
+        "role, content",
+      )
+      .eq(
+        "conversation_id",
+        conversationId,
+      )
+      .eq(
+        "user_id",
+        userId,
+      )
+      .in(
+        "role",
+        ["user", "assistant"],
+      )
+      .order(
+        "created_at",
+        {
+          ascending: false,
+        },
+      )
+      .limit(
+        MAX_HISTORY_MESSAGES,
+      );
+
+  if (error) {
+    throw new Error(
+      "Failed to load conversation history.",
+    );
+  }
+
+  const messages =
+    (data ?? []) as ChatMessageRecord[];
+
+  return [
+    ...messages,
+  ].reverse();
+}
+
+async function insertUserMessage(
+  supabase: ReturnType<
+    typeof createAdminSupabaseClient
+  >,
+  userId: string,
+  conversationId: string,
+  content: string,
+  capabilityId?: string,
+): Promise<string> {
+  const messageId =
+    crypto.randomUUID();
+
+  const {
+    error,
+  } =
+    await supabase
+      .from("chat_messages")
+      .insert({
+        id: messageId,
+        conversation_id:
+          conversationId,
+        user_id: userId,
+        role: "user",
+        content,
+        status: "completed",
+        attachments: [],
+        ...(capabilityId
+          ? {
+              capability_id:
+                capabilityId,
+            }
+          : {}),
+      });
+
+  if (error) {
+    throw new Error(
+      "Failed to persist user message.",
+    );
+  }
+
+  return messageId;
+}
+
+async function insertAssistantMessage(
+  supabase: ReturnType<
+    typeof createAdminSupabaseClient
+  >,
+  userId: string,
+  conversationId: string,
+  content: string,
+  capabilityId?: string,
+): Promise<{
+  readonly id: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}> {
+  const messageId =
+    crypto.randomUUID();
+
+  const now =
+    new Date().toISOString();
+
+  const {
+    error,
+  } =
+    await supabase
+      .from("chat_messages")
+      .insert({
+        id: messageId,
+        conversation_id:
+          conversationId,
+        user_id: userId,
+        role: "assistant",
+        content,
+        status: "completed",
+        attachments: [],
+        ...(capabilityId
+          ? {
+              capability_id:
+                capabilityId,
+            }
+          : {}),
+      });
+
+  if (error) {
+    throw new Error(
+      "Failed to persist assistant message.",
+    );
+  }
+
+  return {
+    id: messageId,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+async function touchConversation(
+  supabase: ReturnType<
+    typeof createAdminSupabaseClient
+  >,
+  conversationId: string,
+): Promise<void> {
+  const {
+    error,
+  } =
+    await supabase
+      .from("chat_conversations")
+      .update({
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq(
+        "id",
+        conversationId,
+      );
+
+  if (error) {
+    throw new Error(
+      "Failed to update conversation timestamp.",
+    );
+  }
+}
+
+function buildAIRequest(
+  requestId: string,
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  history:
+    readonly ChatMessageRecord[],
+  message: string,
+  capability?: string,
+  language?: string,
+): AIExecutionRequest {
+  const messages = [
+    ...history,
+    {
+      role: "user" as const,
+      content: message,
+    },
+  ];
+
+  return {
+    requestId,
+    userId,
+    conversationId,
+    messageId,
+    messages,
+    model: {
+      provider: "openai",
+      model: "gpt-4.1",
+      maxOutputTokens: 4096,
+      temperature: 0.7,
+    },
+    mode: "standard",
+    metadata: {
+      ...(capability
+        ? {
+            capability,
+          }
+        : {}),
+      ...(language
+        ? {
+            language,
+          }
+        : {}),
+    },
+  };
+}
+
+function getPublicAIErrorMessage(
+  code: string,
+): string {
+  switch (code) {
+    case "AI_RUNTIME_RESOLUTION_FAILED":
+      return "AI runtime is currently unavailable.";
+
+    case "AI_RUNTIME_PLAN_EMPTY":
+      return "No AI runtime is currently available.";
+
+    case "AI_EXECUTION_POLICY_INVALID":
+      return "AI execution policy is invalid.";
+
+    case "AI_PROVIDER_TIMEOUT":
+      return "The AI service took too long to respond.";
+
+    case "AI_PROVIDER_ABORTED":
+      return "The AI request was cancelled.";
+
+    default:
+      return "The AI service is temporarily unavailable.";
+  }
+}
+
 async function handleRequest(
   request: Request,
 ): Promise<Response> {
   const requestBody =
-    await parseRequest(request);
+    await parseRequest(
+      request,
+    );
 
   if (!requestBody) {
     return jsonResponse(
@@ -305,30 +733,174 @@ async function handleRequest(
     );
   }
 
-  const conversationId =
-    getOptionalString(
-      requestBody.conversationId,
-    );
-
   const capability =
     validateCapability(
       requestBody.capability,
     );
 
-  /*
-   * Provider execution and trusted persistence
-   * will be connected here after the AI provider
-   * contract for this Clean Build is confirmed.
-   */
+  const language =
+    validateLanguage(
+      requestBody.language,
+    );
+
+  const adminSupabase =
+    createAdminSupabaseClient();
+
+  let conversation:
+    ConversationRecord;
+
+  const requestedConversationId =
+    getOptionalString(
+      requestBody.conversationId,
+    );
+
+  if (
+    requestedConversationId
+  ) {
+    const existingConversation =
+      await getConversation(
+        adminSupabase,
+        requestedConversationId,
+        user.id,
+      );
+
+    if (
+      !existingConversation
+    ) {
+      return jsonResponse(
+        {
+          success: false,
+          error:
+            "Conversation not found.",
+          requestId,
+        },
+        404,
+      );
+    }
+
+    conversation =
+      existingConversation;
+  } else {
+    conversation =
+      await createConversation(
+        adminSupabase,
+        user.id,
+      );
+  }
+
+  const history =
+    await loadConversationMessages(
+      adminSupabase,
+      conversation.id,
+      user.id,
+    );
+
+  const userMessageId =
+    await insertUserMessage(
+      adminSupabase,
+      user.id,
+      conversation.id,
+      message,
+      capability,
+    );
+
+  const aiRequest =
+    buildAIRequest(
+      requestId,
+      user.id,
+      conversation.id,
+      userMessageId,
+      history,
+      message,
+      capability,
+      language,
+    );
+
+  const execution =
+    await aiRuntimeCoordinator.execute(
+      aiRequest,
+      {
+        timeoutMs: 30_000,
+        maxRetries: 1,
+        retryDelayMs: 500,
+      },
+    );
+
+  if (
+    !execution.result.success
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          getPublicAIErrorMessage(
+            execution.result.error.code,
+          ),
+        requestId,
+      },
+      503,
+    );
+  }
+
+  const assistantContent =
+    execution.result.response.content.trim();
+
+  if (
+    assistantContent.length === 0
+  ) {
+    return jsonResponse(
+      {
+        success: false,
+        error:
+          "AI returned an empty response.",
+        requestId,
+      },
+      502,
+    );
+  }
+
+  const assistantMessage =
+    await insertAssistantMessage(
+      adminSupabase,
+      user.id,
+      conversation.id,
+      assistantContent,
+      capability,
+    );
+
+  await touchConversation(
+    adminSupabase,
+    conversation.id,
+  );
 
   return jsonResponse(
     {
-      success: false,
-      error:
-        "AI provider execution is not configured yet.",
-      requestId,
+      success: true,
+      conversationId:
+        conversation.id,
+      message: {
+        id: assistantMessage.id,
+        conversationId:
+          conversation.id,
+        userId: user.id,
+        role: "assistant",
+        content:
+          assistantContent,
+        status: "completed",
+        attachments: [],
+        ...(capability
+          ? {
+              capabilityId:
+                capability,
+            }
+          : {}),
+        createdAt:
+          assistantMessage.createdAt,
+        updatedAt:
+          assistantMessage.updatedAt,
+      },
     },
-    503,
+    200,
   );
 }
 
@@ -366,16 +938,12 @@ Deno.serve(
       return await handleRequest(
         request,
       );
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Internal server error.";
-
+    } catch {
       return jsonResponse(
         {
           success: false,
-          error: message,
+          error:
+            "Internal server error.",
         },
         500,
       );
