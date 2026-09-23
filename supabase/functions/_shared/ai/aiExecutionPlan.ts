@@ -1,21 +1,27 @@
 // ==========================================================
 // Mass Diamond — AI Execution Plan
 //
-// Combines provider resolution with model execution policy.
+// Converts execution policy into an ordered runtime plan.
 //
 // Responsibilities:
-// - Pair each provider with its intended model.
+// - Resolve policy model configurations to registered runtimes.
 // - Preserve primary/fallback ordering.
-// - Prevent a provider from receiving another provider's model.
-// - Keep execution mechanics outside this layer.
+// - Expose unavailable runtime targets explicitly.
+// - Keep planning independent from provider-specific logic.
 //
-// Does NOT handle:
-// - Network execution
-// - Retry
-// - Timeout
-// - Persistence
-// - Billing
-// - Authentication
+// This layer does NOT:
+// - Execute providers
+// - Retry requests
+// - Handle timeouts
+// - Persist data
+// - Handle authentication
+// - Handle billing
+// - Perform network requests
+//
+// Runtime adapters may represent:
+// - External runtimes
+// - Self-hosted runtimes
+// - Mass Diamond-native runtimes
 // ==========================================================
 
 import type {
@@ -34,8 +40,21 @@ export interface AIExecutionTarget {
   readonly isPrimary: boolean;
 }
 
+export interface AIUnavailableExecutionTarget {
+  readonly providerId: string;
+  readonly model: string;
+  readonly priority: number;
+  readonly isPrimary: boolean;
+  readonly reason:
+    | "PROVIDER_NOT_REGISTERED";
+}
+
 export interface AIExecutionPlan {
-  readonly targets: readonly AIExecutionTarget[];
+  readonly targets:
+    readonly AIExecutionTarget[];
+
+  readonly unavailableTargets:
+    readonly AIUnavailableExecutionTarget[];
 }
 
 export interface AIExecutionPlanBuilder {
@@ -52,26 +71,51 @@ export class DefaultAIExecutionPlanBuilder
     policy: AIExecutionPolicyPlan,
     providers: readonly AIProvider[],
   ): AIExecutionPlan {
-    const modelConfigs: readonly AIModelConfig[] = [
-      policy.primary,
-      ...policy.fallbacks,
-    ];
+    const modelConfigs:
+      readonly AIModelConfig[] = [
+        policy.primary,
+        ...policy.fallbacks,
+      ];
 
-    const targets: AIExecutionTarget[] = [];
+    const targets:
+      AIExecutionTarget[] = [];
+
+    const unavailableTargets:
+      AIUnavailableExecutionTarget[] = [];
 
     for (
       let index = 0;
       index < modelConfigs.length;
       index += 1
     ) {
-      const model = modelConfigs[index];
+      const model =
+        modelConfigs[index];
 
-      const provider = providers.find(
-        (candidate) =>
-          candidate.id === model.provider,
-      );
+      const provider =
+        providers.find(
+          (candidate) =>
+            candidate.id ===
+            model.provider,
+        );
 
       if (!provider) {
+        unavailableTargets.push({
+          providerId:
+            model.provider,
+
+          model:
+            model.model,
+
+          priority:
+            index,
+
+          isPrimary:
+            index === 0,
+
+          reason:
+            "PROVIDER_NOT_REGISTERED",
+        });
+
         continue;
       }
 
@@ -85,6 +129,7 @@ export class DefaultAIExecutionPlanBuilder
 
     return {
       targets,
+      unavailableTargets,
     };
   }
 }
