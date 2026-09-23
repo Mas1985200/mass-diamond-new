@@ -1,20 +1,28 @@
 // ==========================================================
 // Mass Diamond — AI Execution Engine
 //
+// Executes an AI execution plan while keeping execution
+// mechanics independent from provider implementations.
+//
 // Responsibilities:
-// - Provider execution
+// - Execute provider/model targets
 // - Timeout protection
 // - Controlled retry
-// - Provider fallback
+// - Ordered fallback
 // - Provider-neutral error handling
 //
 // This layer intentionally does NOT handle:
 // - UI
-// - persistence
-// - authentication
-// - routing
-// - billing
-// - provider-specific API logic
+// - Authentication
+// - Routing
+// - Persistence
+// - Billing
+// - Capability selection
+// - Provider-specific API logic
+//
+// External providers are runtime adapters only.
+// Self-hosted and Mass Diamond-native runtimes can use
+// the same execution contract in the future.
 // ==========================================================
 
 import type {
@@ -24,6 +32,11 @@ import type {
   AIProviderError,
 } from "./types";
 
+import type {
+  AIExecutionPlan,
+  AIExecutionTarget,
+} from "./aiExecutionPlan";
+
 export interface AIExecutionPolicy {
   readonly timeoutMs: number;
   readonly maxRetries: number;
@@ -32,6 +45,7 @@ export interface AIExecutionPolicy {
 
 export interface AIExecutionAttempt {
   readonly provider: string;
+  readonly model: string;
   readonly attempt: number;
   readonly latencyMs: number;
   readonly success: boolean;
@@ -46,7 +60,7 @@ export interface AIExecutionEngineResult {
 export interface AIExecutionEngine {
   execute(
     request: AIExecutionRequest,
-    providers: readonly AIProvider[],
+    plan: AIExecutionPlan,
     policy?: Partial<AIExecutionPolicy>,
   ): Promise<AIExecutionEngineResult>;
 }
@@ -62,7 +76,7 @@ export class DefaultAIExecutionEngine
 {
   public async execute(
     request: AIExecutionRequest,
-    providers: readonly AIProvider[],
+    plan: AIExecutionPlan,
     policyOverrides: Partial<AIExecutionPolicy> = {},
   ): Promise<AIExecutionEngineResult> {
     const policy: AIExecutionPolicy = {
@@ -70,14 +84,14 @@ export class DefaultAIExecutionEngine
       ...policyOverrides,
     };
 
-    if (providers.length === 0) {
+    if (plan.targets.length === 0) {
       return {
         result: {
           success: false,
           error: {
-            code: "NO_AI_PROVIDER_AVAILABLE",
+            code: "NO_AI_EXECUTION_TARGET_AVAILABLE",
             message:
-              "No AI provider is available for execution.",
+              "No AI execution target is available.",
             retryable: false,
           },
         },
@@ -90,16 +104,12 @@ export class DefaultAIExecutionEngine
     let lastFailure: AIExecutionResult | undefined;
 
     for (
-      let providerIndex = 0;
-      providerIndex < providers.length;
-      providerIndex += 1
+      const target of plan.targets
     ) {
-      const provider = providers[providerIndex];
-
       const providerResult =
-        await this.executeWithRetry(
+        await this.executeTargetWithRetry(
           request,
-          provider,
+          target,
           policy,
           attempts,
         );
@@ -113,9 +123,7 @@ export class DefaultAIExecutionEngine
 
       lastFailure = providerResult;
 
-      if (
-        !providerResult.error.retryable
-      ) {
+      if (!providerResult.error.retryable) {
         break;
       }
     }
@@ -128,9 +136,9 @@ export class DefaultAIExecutionEngine
     };
   }
 
-  private async executeWithRetry(
+  private async executeTargetWithRetry(
     request: AIExecutionRequest,
-    provider: AIProvider,
+    target: AIExecutionTarget,
     policy: AIExecutionPolicy,
     attempts: AIExecutionAttempt[],
   ): Promise<AIExecutionResult> {
@@ -148,10 +156,15 @@ export class DefaultAIExecutionEngine
     ) {
       const startedAt = Date.now();
 
+      const executionRequest: AIExecutionRequest = {
+        ...request,
+        model: target.model,
+      };
+
       const result =
         await this.executeWithTimeout(
-          request,
-          provider,
+          executionRequest,
+          target.provider,
           policy.timeoutMs,
         );
 
@@ -159,7 +172,8 @@ export class DefaultAIExecutionEngine
         Date.now() - startedAt;
 
       attempts.push({
-        provider: provider.id,
+        provider: target.provider.id,
+        model: target.model.model,
         attempt,
         latencyMs,
         success: result.success,
@@ -189,7 +203,7 @@ export class DefaultAIExecutionEngine
     return (
       lastResult ??
       this.createUnknownFailure(
-        provider.id,
+        target.provider.id,
       )
     );
   }
@@ -215,7 +229,7 @@ export class DefaultAIExecutionEngine
                     code:
                       "AI_PROVIDER_TIMEOUT",
                     message:
-                      `Provider ${provider.id} exceeded the ${timeoutMs}ms execution timeout.`,
+                      `AI runtime ${provider.id} exceeded the ${timeoutMs}ms execution timeout.`,
                     provider:
                       provider.id,
                     retryable: true,
@@ -273,7 +287,7 @@ export class DefaultAIExecutionEngine
       error: {
         code: "AI_EXECUTION_FAILED",
         message:
-          "AI execution failed without a provider response.",
+          "AI execution failed without a runtime response.",
         provider:
           provider as AIProviderError["provider"],
         retryable: true,
@@ -286,7 +300,7 @@ export class DefaultAIExecutionEngine
   ): string {
     return error instanceof Error
       ? error.message
-      : "Unknown AI provider execution error.";
+      : "Unknown AI runtime execution error.";
   }
 }
 
