@@ -1,20 +1,32 @@
 // ==========================================================
-// Mass Diamond — OpenAI Provider
-// Provider adapter for the Mass Diamond AI Core.
+// Mass Diamond — OpenAI AI Runtime Adapter
+//
+// External runtime adapter for OpenAI.
+//
+// This adapter is intentionally isolated from:
+// - routing
+// - retry policy
+// - timeout policy
+// - persistence
+// - billing
+//
+// Mass Diamond AI Core owns orchestration.
+// OpenAI is only one replaceable runtime.
 // ==========================================================
 
 import type {
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
-  AIProviderError,
 } from "../types";
 
-const OPENAI_API_URL =
-  "https://api.openai.com/v1/chat/completions";
+export class OpenAIProvider
+  implements AIProvider
+{
+  public readonly id = "openai";
 
-export class OpenAIProvider implements AIProvider {
-  public readonly id = "openai" as const;
+  public readonly runtimeKind =
+    "external" as const;
 
   public async execute(
     request: AIExecutionRequest,
@@ -26,7 +38,8 @@ export class OpenAIProvider implements AIProvider {
       return {
         success: false,
         error: {
-          code: "OPENAI_API_KEY_MISSING",
+          code:
+            "OPENAI_API_KEY_MISSING",
           message:
             "OpenAI API key is not configured.",
           provider: this.id,
@@ -39,39 +52,58 @@ export class OpenAIProvider implements AIProvider {
 
     try {
       const response = await fetch(
-        OPENAI_API_URL,
+        "https://api.openai.com/v1/chat/completions",
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
+            "Content-Type":
+              "application/json",
+            Authorization:
+              `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model: request.model.model,
             messages: request.messages,
             max_tokens:
-              request.model.maxOutputTokens,
+              request.model
+                .maxOutputTokens,
             temperature:
               request.model.temperature,
           }),
         },
       );
 
-      const payload: unknown =
-        await response.json();
-
       if (!response.ok) {
+        const errorBody =
+          await this.readErrorBody(
+            response,
+          );
+
         return {
           success: false,
-          error: this.createHttpError(
-            response.status,
-            payload,
-          ),
+          error: {
+            code:
+              "OPENAI_HTTP_ERROR",
+            message:
+              errorBody ??
+              `OpenAI request failed with status ${response.status}.`,
+            provider: this.id,
+            retryable:
+              response.status === 408 ||
+              response.status === 409 ||
+              response.status === 429 ||
+              response.status >= 500,
+            statusCode:
+              response.status,
+          },
         };
       }
 
+      const data =
+        await response.json();
+
       const content =
-        this.extractContent(payload);
+        this.extractContent(data);
 
       if (!content) {
         return {
@@ -83,11 +115,12 @@ export class OpenAIProvider implements AIProvider {
               "OpenAI returned an empty response.",
             provider: this.id,
             retryable: true,
-            statusCode:
-              response.status,
           },
         };
       }
+
+      const usage =
+        this.extractUsage(data);
 
       return {
         success: true,
@@ -99,8 +132,7 @@ export class OpenAIProvider implements AIProvider {
             request.model.model,
           content,
           status: "success",
-          usage:
-            this.extractUsage(payload),
+          usage,
           latencyMs:
             Date.now() - startedAt,
         },
@@ -112,7 +144,9 @@ export class OpenAIProvider implements AIProvider {
           code:
             "OPENAI_NETWORK_ERROR",
           message:
-            this.getErrorMessage(error),
+            this.getErrorMessage(
+              error,
+            ),
           provider: this.id,
           retryable: true,
         },
@@ -121,18 +155,18 @@ export class OpenAIProvider implements AIProvider {
   }
 
   private extractContent(
-    payload: unknown,
+    data: unknown,
   ): string | undefined {
     if (
-      typeof payload !== "object" ||
-      payload === null
+      typeof data !== "object" ||
+      data === null
     ) {
       return undefined;
     }
 
     const choices =
       (
-        payload as {
+        data as {
           choices?: unknown;
         }
       ).choices;
@@ -146,7 +180,7 @@ export class OpenAIProvider implements AIProvider {
 
     if (
       typeof firstChoice !==
-      "object" ||
+        "object" ||
       firstChoice === null
     ) {
       return undefined;
@@ -176,23 +210,23 @@ export class OpenAIProvider implements AIProvider {
 
     return typeof content ===
       "string"
-      ? content
+      ? content.trim() || undefined
       : undefined;
   }
 
   private extractUsage(
-    payload: unknown,
+    data: unknown,
   ) {
     if (
-      typeof payload !== "object" ||
-      payload === null
+      typeof data !== "object" ||
+      data === null
     ) {
       return undefined;
     }
 
     const usage =
       (
-        payload as {
+        data as {
           usage?: unknown;
         }
       ).usage;
@@ -205,94 +239,80 @@ export class OpenAIProvider implements AIProvider {
       return undefined;
     }
 
-    const data =
-      usage as {
-        prompt_tokens?: unknown;
-        completion_tokens?: unknown;
-        total_tokens?: unknown;
-      };
+    const value = usage as {
+      prompt_tokens?: unknown;
+      completion_tokens?: unknown;
+      total_tokens?: unknown;
+    };
 
     return {
       inputTokens:
-        this.readNumber(
-          data.prompt_tokens,
+        this.toNumber(
+          value.prompt_tokens,
         ),
       outputTokens:
-        this.readNumber(
-          data.completion_tokens,
+        this.toNumber(
+          value.completion_tokens,
         ),
       totalTokens:
-        this.readNumber(
-          data.total_tokens,
+        this.toNumber(
+          value.total_tokens,
         ),
     };
   }
 
-  private createHttpError(
-    statusCode: number,
-    payload: unknown,
-  ): AIProviderError {
-    return {
-      code:
-        `OPENAI_HTTP_${statusCode}`,
-      message:
-        this.extractErrorMessage(
-          payload,
-        ) ??
-        "OpenAI request failed.",
-      provider: this.id,
-      retryable:
-        statusCode === 408 ||
-        statusCode === 409 ||
-        statusCode === 429 ||
-        statusCode >= 500,
-      statusCode,
-    };
-  }
+  private async readErrorBody(
+    response: Response,
+  ): Promise<string | undefined> {
+    try {
+      const data =
+        await response.json();
 
-  private extractErrorMessage(
-    payload: unknown,
-  ): string | undefined {
-    if (
-      typeof payload !== "object" ||
-      payload === null
-    ) {
+      if (
+        typeof data !== "object" ||
+        data === null
+      ) {
+        return undefined;
+      }
+
+      const error =
+        (
+          data as {
+            error?: unknown;
+          }
+        ).error;
+
+      if (
+        typeof error === "object" &&
+        error !== null
+      ) {
+        const message =
+          (
+            error as {
+              message?: unknown;
+            }
+          ).message;
+
+        if (
+          typeof message ===
+          "string"
+        ) {
+          return message;
+        }
+      }
+
+      return undefined;
+    } catch {
       return undefined;
     }
-
-    const error =
-      (
-        payload as {
-          error?: unknown;
-        }
-      ).error;
-
-    if (
-      typeof error !==
-        "object" ||
-      error === null
-    ) {
-      return undefined;
-    }
-
-    const message =
-      (
-        error as {
-          message?: unknown;
-        }
-      ).message;
-
-    return typeof message ===
-      "string"
-      ? message
-      : undefined;
   }
 
-  private readNumber(
+  private toNumber(
     value: unknown,
   ): number | undefined {
     return typeof value ===
-      "number"
+      "number" &&
+      Number.isFinite(value)
       ? value
       : undefined;
   }
