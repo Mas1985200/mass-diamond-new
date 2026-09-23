@@ -12,9 +12,14 @@
 //
 // Mass Diamond AI Core owns orchestration.
 // OpenAI is only one replaceable runtime.
+//
+// The execution context is provider-neutral. The adapter only
+// uses the optional AbortSignal to cancel the underlying HTTP
+// request when supported by the runtime.
 // ==========================================================
 
 import type {
+  AIExecutionContext,
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
@@ -23,16 +28,20 @@ import type {
 export class OpenAIProvider
   implements AIProvider
 {
-  public readonly id = "openai";
+  public readonly id =
+    "openai";
 
   public readonly runtimeKind =
     "external" as const;
 
   public async execute(
     request: AIExecutionRequest,
+    context?: AIExecutionContext,
   ): Promise<AIExecutionResult> {
     const apiKey =
-      Deno.env.get("OPENAI_API_KEY");
+      Deno.env.get(
+        "OPENAI_API_KEY",
+      );
 
     if (!apiKey) {
       return {
@@ -40,38 +49,56 @@ export class OpenAIProvider
         error: {
           code:
             "OPENAI_API_KEY_MISSING",
+
           message:
             "OpenAI API key is not configured.",
-          provider: this.id,
+
+          provider:
+            this.id,
+
           retryable: false,
         },
       };
     }
 
-    const startedAt = Date.now();
+    const startedAt =
+      Date.now();
 
     try {
-      const response = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-            Authorization:
-              `Bearer ${apiKey}`,
+      const response =
+        await fetch(
+          "https://api.openai.com/v1/chat/completions",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${apiKey}`,
+            },
+
+            body: JSON.stringify({
+              model:
+                request.model.model,
+
+              messages:
+                request.messages,
+
+              max_tokens:
+                request.model
+                  .maxOutputTokens,
+
+              temperature:
+                request.model
+                  .temperature,
+            }),
+
+            signal:
+              context?.signal,
           },
-          body: JSON.stringify({
-            model: request.model.model,
-            messages: request.messages,
-            max_tokens:
-              request.model
-                .maxOutputTokens,
-            temperature:
-              request.model.temperature,
-          }),
-        },
-      );
+        );
 
       if (!response.ok) {
         const errorBody =
@@ -84,15 +111,20 @@ export class OpenAIProvider
           error: {
             code:
               "OPENAI_HTTP_ERROR",
+
             message:
               errorBody ??
               `OpenAI request failed with status ${response.status}.`,
-            provider: this.id,
+
+            provider:
+              this.id,
+
             retryable:
               response.status === 408 ||
               response.status === 409 ||
               response.status === 429 ||
               response.status >= 500,
+
             statusCode:
               response.status,
           },
@@ -103,7 +135,9 @@ export class OpenAIProvider
         await response.json();
 
       const content =
-        this.extractContent(data);
+        this.extractContent(
+          data,
+        );
 
       if (!content) {
         return {
@@ -111,43 +145,87 @@ export class OpenAIProvider
           error: {
             code:
               "OPENAI_EMPTY_RESPONSE",
+
             message:
               "OpenAI returned an empty response.",
-            provider: this.id,
+
+            provider:
+              this.id,
+
             retryable: true,
           },
         };
       }
 
       const usage =
-        this.extractUsage(data);
+        this.extractUsage(
+          data,
+        );
 
       return {
         success: true,
         response: {
           requestId:
             request.requestId,
-          provider: this.id,
+
+          provider:
+            this.id,
+
           model:
             request.model.model,
+
           content,
-          status: "success",
+
+          status:
+            "success",
+
           usage,
+
           latencyMs:
-            Date.now() - startedAt,
+            Math.max(
+              0,
+              Date.now() -
+                startedAt,
+            ),
         },
       };
     } catch (error) {
+      if (
+        this.isAbortError(
+          error,
+        )
+      ) {
+        return {
+          success: false,
+          error: {
+            code:
+              "OPENAI_REQUEST_ABORTED",
+
+            message:
+              "OpenAI request was aborted.",
+
+            provider:
+              this.id,
+
+            retryable: false,
+          },
+        };
+      }
+
       return {
         success: false,
         error: {
           code:
             "OPENAI_NETWORK_ERROR",
+
           message:
             this.getErrorMessage(
               error,
             ),
-          provider: this.id,
+
+          provider:
+            this.id,
+
           retryable: true,
         },
       };
@@ -158,7 +236,8 @@ export class OpenAIProvider
     data: unknown,
   ): string | undefined {
     if (
-      typeof data !== "object" ||
+      typeof data !==
+        "object" ||
       data === null
     ) {
       return undefined;
@@ -171,7 +250,11 @@ export class OpenAIProvider
         }
       ).choices;
 
-    if (!Array.isArray(choices)) {
+    if (
+      !Array.isArray(
+        choices,
+      )
+    ) {
       return undefined;
     }
 
@@ -210,7 +293,8 @@ export class OpenAIProvider
 
     return typeof content ===
       "string"
-      ? content.trim() || undefined
+      ? content.trim() ||
+        undefined
       : undefined;
   }
 
@@ -218,7 +302,8 @@ export class OpenAIProvider
     data: unknown,
   ) {
     if (
-      typeof data !== "object" ||
+      typeof data !==
+        "object" ||
       data === null
     ) {
       return undefined;
@@ -239,21 +324,29 @@ export class OpenAIProvider
       return undefined;
     }
 
-    const value = usage as {
-      prompt_tokens?: unknown;
-      completion_tokens?: unknown;
-      total_tokens?: unknown;
-    };
+    const value =
+      usage as {
+        prompt_tokens?:
+          unknown;
+
+        completion_tokens?:
+          unknown;
+
+        total_tokens?:
+          unknown;
+      };
 
     return {
       inputTokens:
         this.toNumber(
           value.prompt_tokens,
         ),
+
       outputTokens:
         this.toNumber(
           value.completion_tokens,
         ),
+
       totalTokens:
         this.toNumber(
           value.total_tokens,
@@ -263,13 +356,16 @@ export class OpenAIProvider
 
   private async readErrorBody(
     response: Response,
-  ): Promise<string | undefined> {
+  ): Promise<
+    string | undefined
+  > {
     try {
       const data =
         await response.json();
 
       if (
-        typeof data !== "object" ||
+        typeof data !==
+          "object" ||
         data === null
       ) {
         return undefined;
@@ -283,7 +379,8 @@ export class OpenAIProvider
         ).error;
 
       if (
-        typeof error === "object" &&
+        typeof error ===
+          "object" &&
         error !== null
       ) {
         const message =
@@ -312,15 +409,40 @@ export class OpenAIProvider
   ): number | undefined {
     return typeof value ===
       "number" &&
-      Number.isFinite(value)
+      Number.isFinite(
+        value,
+      )
       ? value
       : undefined;
+  }
+
+  private isAbortError(
+    error: unknown,
+  ): boolean {
+    if (
+      typeof error !==
+        "object" ||
+      error === null
+    ) {
+      return false;
+    }
+
+    const candidate =
+      error as {
+        name?: unknown;
+      };
+
+    return (
+      candidate.name ===
+      "AbortError"
+    );
   }
 
   private getErrorMessage(
     error: unknown,
   ): string {
-    return error instanceof Error
+    return error instanceof
+      Error
       ? error.message
       : "Unknown OpenAI network error.";
   }
