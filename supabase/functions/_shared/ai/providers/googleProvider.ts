@@ -12,9 +12,14 @@
 //
 // Mass Diamond AI Core owns orchestration.
 // Google is only one replaceable runtime.
+//
+// The execution context is provider-neutral. The adapter only
+// uses the optional AbortSignal to cancel the underlying HTTP
+// request when supported by the runtime.
 // ==========================================================
 
 import type {
+  AIExecutionContext,
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
@@ -23,13 +28,15 @@ import type {
 export class GoogleProvider
   implements AIProvider
 {
-  public readonly id = "google";
+  public readonly id =
+    "google";
 
   public readonly runtimeKind =
     "external" as const;
 
   public async execute(
     request: AIExecutionRequest,
+    context?: AIExecutionContext,
   ): Promise<AIExecutionResult> {
     const apiKey =
       Deno.env.get(
@@ -45,15 +52,20 @@ export class GoogleProvider
         error: {
           code:
             "GOOGLE_AI_API_KEY_MISSING",
+
           message:
             "Google AI API key is not configured.",
-          provider: this.id,
+
+          provider:
+            this.id,
+
           retryable: false,
         },
       };
     }
 
-    const startedAt = Date.now();
+    const startedAt =
+      Date.now();
 
     try {
       const endpoint =
@@ -66,76 +78,89 @@ export class GoogleProvider
       const systemMessages =
         request.messages.filter(
           (message) =>
-            message.role === "system",
+            message.role ===
+            "system",
         );
 
       const conversationMessages =
         request.messages.filter(
           (message) =>
-            message.role !== "system",
+            message.role !==
+            "system",
         );
 
-      const response = await fetch(
-        endpoint,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            ...(systemMessages.length > 0
-              ? {
-                  systemInstruction: {
-                    parts:
-                      systemMessages.map(
-                        (message) => ({
-                          text:
-                            message.content,
-                        }),
-                      ),
-                  },
-                }
-              : {}),
-            contents:
-              conversationMessages.map(
-                (message) => ({
-                  role:
-                    message.role ===
-                    "assistant"
-                      ? "model"
-                      : "user",
-                  parts: [
-                    {
-                      text:
-                        message.content,
-                    },
-                  ],
-                }),
-              ),
-            generationConfig: {
-              ...(request.model
-                .maxOutputTokens !==
-              undefined
-                ? {
-                    maxOutputTokens:
-                      request.model
-                        .maxOutputTokens,
-                  }
-                : {}),
-              ...(request.model
-                .temperature !==
-              undefined
-                ? {
-                    temperature:
-                      request.model
-                        .temperature,
-                  }
-                : {}),
+      const response =
+        await fetch(
+          endpoint,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
             },
-          }),
-        },
-      );
+
+            body: JSON.stringify({
+              ...(systemMessages.length >
+              0
+                ? {
+                    systemInstruction: {
+                      parts:
+                        systemMessages.map(
+                          (message) => ({
+                            text:
+                              message.content,
+                          }),
+                        ),
+                    },
+                  }
+                : {}),
+
+              contents:
+                conversationMessages.map(
+                  (message) => ({
+                    role:
+                      message.role ===
+                      "assistant"
+                        ? "model"
+                        : "user",
+
+                    parts: [
+                      {
+                        text:
+                          message.content,
+                      },
+                    ],
+                  }),
+                ),
+
+              generationConfig: {
+                ...(request.model
+                  .maxOutputTokens !==
+                undefined
+                  ? {
+                      maxOutputTokens:
+                        request.model
+                          .maxOutputTokens,
+                    }
+                  : {}),
+
+                ...(request.model
+                  .temperature !==
+                undefined
+                  ? {
+                      temperature:
+                        request.model
+                          .temperature,
+                    }
+                  : {}),
+              },
+            }),
+
+            signal:
+              context?.signal,
+          },
+        );
 
       if (!response.ok) {
         const errorBody =
@@ -148,15 +173,20 @@ export class GoogleProvider
           error: {
             code:
               "GOOGLE_AI_HTTP_ERROR",
+
             message:
               errorBody ??
               `Google AI request failed with status ${response.status}.`,
-            provider: this.id,
+
+            provider:
+              this.id,
+
             retryable:
               response.status === 408 ||
               response.status === 409 ||
               response.status === 429 ||
               response.status >= 500,
+
             statusCode:
               response.status,
           },
@@ -167,7 +197,9 @@ export class GoogleProvider
         await response.json();
 
       const content =
-        this.extractContent(data);
+        this.extractContent(
+          data,
+        );
 
       if (!content) {
         return {
@@ -175,43 +207,87 @@ export class GoogleProvider
           error: {
             code:
               "GOOGLE_AI_EMPTY_RESPONSE",
+
             message:
               "Google AI returned an empty response.",
-            provider: this.id,
+
+            provider:
+              this.id,
+
             retryable: true,
           },
         };
       }
 
       const usage =
-        this.extractUsage(data);
+        this.extractUsage(
+          data,
+        );
 
       return {
         success: true,
         response: {
           requestId:
             request.requestId,
-          provider: this.id,
+
+          provider:
+            this.id,
+
           model:
             request.model.model,
+
           content,
-          status: "success",
+
+          status:
+            "success",
+
           usage,
+
           latencyMs:
-            Date.now() - startedAt,
+            Math.max(
+              0,
+              Date.now() -
+                startedAt,
+            ),
         },
       };
     } catch (error) {
+      if (
+        this.isAbortError(
+          error,
+        )
+      ) {
+        return {
+          success: false,
+          error: {
+            code:
+              "GOOGLE_AI_REQUEST_ABORTED",
+
+            message:
+              "Google AI request was aborted.",
+
+            provider:
+              this.id,
+
+            retryable: false,
+          },
+        };
+      }
+
       return {
         success: false,
         error: {
           code:
             "GOOGLE_AI_NETWORK_ERROR",
+
           message:
             this.getErrorMessage(
               error,
             ),
-          provider: this.id,
+
+          provider:
+            this.id,
+
           retryable: true,
         },
       };
@@ -222,7 +298,8 @@ export class GoogleProvider
     data: unknown,
   ): string | undefined {
     if (
-      typeof data !== "object" ||
+      typeof data !==
+        "object" ||
       data === null
     ) {
       return undefined;
@@ -235,7 +312,11 @@ export class GoogleProvider
         }
       ).candidates;
 
-    if (!Array.isArray(candidates)) {
+    if (
+      !Array.isArray(
+        candidates,
+      )
+    ) {
       return undefined;
     }
 
@@ -272,7 +353,11 @@ export class GoogleProvider
         }
       ).parts;
 
-    if (!Array.isArray(parts)) {
+    if (
+      !Array.isArray(
+        parts,
+      )
+    ) {
       return undefined;
     }
 
@@ -291,7 +376,8 @@ export class GoogleProvider
               part as {
                 text?: unknown;
               }
-            ).text === "string",
+            ).text ===
+              "string",
         )
         .map(
           (part) =>
@@ -303,14 +389,17 @@ export class GoogleProvider
         .join("")
         .trim();
 
-    return result || undefined;
+    return (
+      result || undefined
+    );
   }
 
   private extractUsage(
     data: unknown,
   ) {
     if (
-      typeof data !== "object" ||
+      typeof data !==
+        "object" ||
       data === null
     ) {
       return undefined;
@@ -331,21 +420,29 @@ export class GoogleProvider
       return undefined;
     }
 
-    const value = usage as {
-      promptTokenCount?: unknown;
-      candidatesTokenCount?: unknown;
-      totalTokenCount?: unknown;
-    };
+    const value =
+      usage as {
+        promptTokenCount?:
+          unknown;
+
+        candidatesTokenCount?:
+          unknown;
+
+        totalTokenCount?:
+          unknown;
+      };
 
     return {
       inputTokens:
         this.toNumber(
           value.promptTokenCount,
         ),
+
       outputTokens:
         this.toNumber(
           value.candidatesTokenCount,
         ),
+
       totalTokens:
         this.toNumber(
           value.totalTokenCount,
@@ -355,13 +452,16 @@ export class GoogleProvider
 
   private async readErrorBody(
     response: Response,
-  ): Promise<string | undefined> {
+  ): Promise<
+    string | undefined
+  > {
     try {
       const data =
         await response.json();
 
       if (
-        typeof data !== "object" ||
+        typeof data !==
+          "object" ||
         data === null
       ) {
         return undefined;
@@ -375,7 +475,8 @@ export class GoogleProvider
         ).error;
 
       if (
-        typeof error === "object" &&
+        typeof error ===
+          "object" &&
         error !== null
       ) {
         const message =
@@ -404,15 +505,40 @@ export class GoogleProvider
   ): number | undefined {
     return typeof value ===
       "number" &&
-      Number.isFinite(value)
+      Number.isFinite(
+        value,
+      )
       ? value
       : undefined;
+  }
+
+  private isAbortError(
+    error: unknown,
+  ): boolean {
+    if (
+      typeof error !==
+        "object" ||
+      error === null
+    ) {
+      return false;
+    }
+
+    const candidate =
+      error as {
+        name?: unknown;
+      };
+
+    return (
+      candidate.name ===
+      "AbortError"
+    );
   }
 
   private getErrorMessage(
     error: unknown,
   ): string {
-    return error instanceof Error
+    return error instanceof
+      Error
       ? error.message
       : "Unknown Google AI network error.";
   }
