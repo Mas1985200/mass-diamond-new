@@ -1,13 +1,27 @@
 // ==========================================================
-// Mass Diamond — Server AI Provider Contracts
-// Provider-neutral contracts for scalable AI execution.
+// Mass Diamond — Server AI Runtime Contracts
+//
+// Provider/runtime-neutral contracts for scalable AI
+// execution.
+//
+// Architecture:
+//   Mass Diamond AI Core
+//        ↓
+//   AI Runtime Contract
+//        ├── External Runtime
+//        ├── Self-Hosted Runtime
+//        └── Mass Diamond Native Runtime
+//
+// Runtime adapters are implementation details.
+// The AI Core must not depend on a specific AI vendor.
 // ==========================================================
 
-export type AIProviderId =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "groq";
+export type AIRuntimeKind =
+  | "external"
+  | "self_hosted"
+  | "native";
+
+export type AIProviderId = string;
 
 export type AIRequestMode =
   | "standard"
@@ -86,6 +100,22 @@ export type AIExecutionResult =
 
 export interface AIProvider {
   readonly id: AIProviderId;
+
+  /**
+   * Describes the runtime category.
+   *
+   * External:
+   * Third-party AI APIs such as OpenAI, Anthropic,
+   * Google, or Groq.
+   *
+   * Self-hosted:
+   * Models operated on infrastructure controlled
+   * by Mass Diamond or its infrastructure partners.
+   *
+   * Native:
+   * Future Mass Diamond-owned AI runtimes/models.
+   */
+  readonly runtimeKind: AIRuntimeKind;
 
   execute(
     request: AIExecutionRequest,
