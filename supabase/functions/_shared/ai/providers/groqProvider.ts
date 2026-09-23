@@ -1,31 +1,45 @@
 // ==========================================================
-// Mass Diamond — Groq Provider
-// Provider adapter for the Mass Diamond AI Core.
+// Mass Diamond — Groq AI Runtime Adapter
+//
+// External runtime adapter for Groq.
+//
+// This adapter is intentionally isolated from:
+// - routing
+// - retry policy
+// - timeout policy
+// - persistence
+// - billing
+//
+// Mass Diamond AI Core owns orchestration.
+// Groq is only one replaceable runtime.
 // ==========================================================
 
 import type {
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
-  AIProviderError,
 } from "../types";
 
-const GROQ_API_URL =
-  "https://api.groq.com/openai/v1/chat/completions";
+export class GroqProvider
+  implements AIProvider
+{
+  public readonly id = "groq";
 
-export class GroqProvider implements AIProvider {
-  public readonly id = "groq" as const;
+  public readonly runtimeKind =
+    "external" as const;
 
   public async execute(
     request: AIExecutionRequest,
   ): Promise<AIExecutionResult> {
-    const apiKey = Deno.env.get("GROQ_API_KEY");
+    const apiKey =
+      Deno.env.get("GROQ_API_KEY");
 
     if (!apiKey) {
       return {
         success: false,
         error: {
-          code: "GROQ_API_KEY_MISSING",
+          code:
+            "GROQ_API_KEY_MISSING",
           message:
             "Groq API key is not configured.",
           provider: this.id,
@@ -38,63 +52,87 @@ export class GroqProvider implements AIProvider {
 
     try {
       const response = await fetch(
-        GROQ_API_URL,
+        "https://api.groq.com/openai/v1/chat/completions",
         {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
+            "Content-Type":
+              "application/json",
+            Authorization:
+              `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model: request.model.model,
             messages: request.messages,
             max_tokens:
-              request.model.maxOutputTokens,
+              request.model
+                .maxOutputTokens,
             temperature:
               request.model.temperature,
           }),
         },
       );
 
-      const payload: unknown =
-        await response.json();
-
       if (!response.ok) {
+        const errorBody =
+          await this.readErrorBody(
+            response,
+          );
+
         return {
           success: false,
-          error: this.createHttpError(
-            response.status,
-            payload,
-          ),
+          error: {
+            code:
+              "GROQ_HTTP_ERROR",
+            message:
+              errorBody ??
+              `Groq request failed with status ${response.status}.`,
+            provider: this.id,
+            retryable:
+              response.status === 408 ||
+              response.status === 409 ||
+              response.status === 429 ||
+              response.status >= 500,
+            statusCode:
+              response.status,
+          },
         };
       }
 
+      const data =
+        await response.json();
+
       const content =
-        this.extractContent(payload);
+        this.extractContent(data);
 
       if (!content) {
         return {
           success: false,
           error: {
-            code: "GROQ_EMPTY_RESPONSE",
+            code:
+              "GROQ_EMPTY_RESPONSE",
             message:
               "Groq returned an empty response.",
             provider: this.id,
             retryable: true,
-            statusCode: response.status,
           },
         };
       }
 
+      const usage =
+        this.extractUsage(data);
+
       return {
         success: true,
         response: {
-          requestId: request.requestId,
+          requestId:
+            request.requestId,
           provider: this.id,
-          model: request.model.model,
+          model:
+            request.model.model,
           content,
           status: "success",
-          usage: this.extractUsage(payload),
+          usage,
           latencyMs:
             Date.now() - startedAt,
         },
@@ -103,9 +141,12 @@ export class GroqProvider implements AIProvider {
       return {
         success: false,
         error: {
-          code: "GROQ_NETWORK_ERROR",
+          code:
+            "GROQ_NETWORK_ERROR",
           message:
-            this.getErrorMessage(error),
+            this.getErrorMessage(
+              error,
+            ),
           provider: this.id,
           retryable: true,
         },
@@ -114,18 +155,18 @@ export class GroqProvider implements AIProvider {
   }
 
   private extractContent(
-    payload: unknown,
+    data: unknown,
   ): string | undefined {
     if (
-      typeof payload !== "object" ||
-      payload === null
+      typeof data !== "object" ||
+      data === null
     ) {
       return undefined;
     }
 
     const choices =
       (
-        payload as {
+        data as {
           choices?: unknown;
         }
       ).choices;
@@ -134,10 +175,12 @@ export class GroqProvider implements AIProvider {
       return undefined;
     }
 
-    const firstChoice = choices[0];
+    const firstChoice =
+      choices[0];
 
     if (
-      typeof firstChoice !== "object" ||
+      typeof firstChoice !==
+        "object" ||
       firstChoice === null
     ) {
       return undefined;
@@ -151,7 +194,8 @@ export class GroqProvider implements AIProvider {
       ).message;
 
     if (
-      typeof message !== "object" ||
+      typeof message !==
+        "object" ||
       message === null
     ) {
       return undefined;
@@ -164,120 +208,111 @@ export class GroqProvider implements AIProvider {
         }
       ).content;
 
-    return typeof content === "string"
-      ? content
+    return typeof content ===
+      "string"
+      ? content.trim() || undefined
       : undefined;
   }
 
   private extractUsage(
-    payload: unknown,
+    data: unknown,
   ) {
     if (
-      typeof payload !== "object" ||
-      payload === null
+      typeof data !== "object" ||
+      data === null
     ) {
       return undefined;
     }
 
     const usage =
       (
-        payload as {
+        data as {
           usage?: unknown;
         }
       ).usage;
 
     if (
-      typeof usage !== "object" ||
+      typeof usage !==
+        "object" ||
       usage === null
     ) {
       return undefined;
     }
 
-    const data =
-      usage as {
-        prompt_tokens?: unknown;
-        completion_tokens?: unknown;
-        total_tokens?: unknown;
-      };
+    const value = usage as {
+      prompt_tokens?: unknown;
+      completion_tokens?: unknown;
+      total_tokens?: unknown;
+    };
 
     return {
       inputTokens:
-        this.readNumber(
-          data.prompt_tokens,
+        this.toNumber(
+          value.prompt_tokens,
         ),
       outputTokens:
-        this.readNumber(
-          data.completion_tokens,
+        this.toNumber(
+          value.completion_tokens,
         ),
       totalTokens:
-        this.readNumber(
-          data.total_tokens,
+        this.toNumber(
+          value.total_tokens,
         ),
     };
   }
 
-  private createHttpError(
-    statusCode: number,
-    payload: unknown,
-  ): AIProviderError {
-    return {
-      code:
-        `GROQ_HTTP_${statusCode}`,
-      message:
-        this.extractErrorMessage(
-          payload,
-        ) ??
-        "Groq request failed.",
-      provider: this.id,
-      retryable:
-        statusCode === 408 ||
-        statusCode === 409 ||
-        statusCode === 429 ||
-        statusCode >= 500,
-      statusCode,
-    };
-  }
+  private async readErrorBody(
+    response: Response,
+  ): Promise<string | undefined> {
+    try {
+      const data =
+        await response.json();
 
-  private extractErrorMessage(
-    payload: unknown,
-  ): string | undefined {
-    if (
-      typeof payload !== "object" ||
-      payload === null
-    ) {
+      if (
+        typeof data !== "object" ||
+        data === null
+      ) {
+        return undefined;
+      }
+
+      const error =
+        (
+          data as {
+            error?: unknown;
+          }
+        ).error;
+
+      if (
+        typeof error === "object" &&
+        error !== null
+      ) {
+        const message =
+          (
+            error as {
+              message?: unknown;
+            }
+          ).message;
+
+        if (
+          typeof message ===
+          "string"
+        ) {
+          return message;
+        }
+      }
+
+      return undefined;
+    } catch {
       return undefined;
     }
-
-    const error =
-      (
-        payload as {
-          error?: unknown;
-        }
-      ).error;
-
-    if (
-      typeof error !== "object" ||
-      error === null
-    ) {
-      return undefined;
-    }
-
-    const message =
-      (
-        error as {
-          message?: unknown;
-        }
-      ).message;
-
-    return typeof message === "string"
-      ? message
-      : undefined;
   }
 
-  private readNumber(
+  private toNumber(
     value: unknown,
   ): number | undefined {
-    return typeof value === "number"
+    return typeof value ===
+      "number" &&
+      Number.isFinite(value)
       ? value
       : undefined;
   }
