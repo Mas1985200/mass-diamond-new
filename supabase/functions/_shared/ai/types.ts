@@ -1,19 +1,16 @@
 // ==========================================================
 // Mass Diamond — Server AI Runtime Contracts
 //
-// Provider/runtime-neutral contracts for scalable AI
-// execution.
+// Provider-neutral contracts for scalable AI execution.
 //
-// Architecture:
-//   Mass Diamond AI Core
-//        ↓
-//   AI Runtime Contract
-//        ├── External Runtime
-//        ├── Self-Hosted Runtime
-//        └── Mass Diamond Native Runtime
+// Runtime categories:
+// - External
+// - Self-hosted
+// - Mass Diamond-native
 //
-// Runtime adapters are implementation details.
-// The AI Core must not depend on a specific AI vendor.
+// These contracts intentionally avoid vendor-specific
+// dependencies so runtime implementations can evolve
+// without changing the Core architecture.
 // ==========================================================
 
 export type AIRuntimeKind =
@@ -21,7 +18,8 @@ export type AIRuntimeKind =
   | "self_hosted"
   | "native";
 
-export type AIProviderId = string;
+export type AIProviderId =
+  string;
 
 export type AIRequestMode =
   | "standard"
@@ -33,10 +31,17 @@ export type AIResponseStatus =
   | "error";
 
 export interface AIModelConfig {
-  readonly provider: AIProviderId;
-  readonly model: string;
-  readonly maxOutputTokens?: number;
-  readonly temperature?: number;
+  readonly provider:
+    AIProviderId;
+
+  readonly model:
+    string;
+
+  readonly maxOutputTokens?:
+    number;
+
+  readonly temperature?:
+    number;
 }
 
 export interface AIMessage {
@@ -44,54 +49,117 @@ export interface AIMessage {
     | "system"
     | "user"
     | "assistant";
-  readonly content: string;
+
+  readonly content:
+    string;
 }
 
 export interface AIExecutionRequest {
-  readonly requestId: string;
-  readonly userId: string;
-  readonly conversationId: string;
-  readonly messageId: string;
-  readonly messages: readonly AIMessage[];
-  readonly model: AIModelConfig;
-  readonly mode: AIRequestMode;
-  readonly metadata?: Readonly<
-    Record<string, string>
-  >;
+  readonly requestId:
+    string;
+
+  readonly userId:
+    string;
+
+  readonly conversationId:
+    string;
+
+  readonly messageId:
+    string;
+
+  readonly messages:
+    readonly AIMessage[];
+
+  readonly model:
+    AIModelConfig;
+
+  readonly mode:
+    AIRequestMode;
+
+  readonly metadata?:
+    Readonly<
+      Record<string, string>
+    >;
+}
+
+export interface AIExecutionContext {
+  readonly signal?:
+    AbortSignal;
+
+  readonly runtimeKind?:
+    AIRuntimeKind;
+
+  readonly metadata?:
+    Readonly<
+      Record<string, string>
+    >;
 }
 
 export interface AIUsage {
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly totalTokens?: number;
+  readonly inputTokens?:
+    number;
+
+  readonly outputTokens?:
+    number;
+
+  readonly totalTokens?:
+    number;
 }
 
 export interface AIExecutionResponse {
-  readonly requestId: string;
-  readonly provider: AIProviderId;
-  readonly model: string;
-  readonly content: string;
-  readonly status: AIResponseStatus;
-  readonly usage?: AIUsage;
-  readonly latencyMs: number;
+  readonly requestId:
+    string;
+
+  readonly provider:
+    AIProviderId;
+
+  readonly model:
+    string;
+
+  readonly content:
+    string;
+
+  readonly status:
+    AIResponseStatus;
+
+  readonly usage?:
+    AIUsage;
+
+  readonly latencyMs:
+    number;
 }
 
 export interface AIProviderError {
-  readonly code: string;
-  readonly message: string;
-  readonly provider?: AIProviderId;
-  readonly retryable: boolean;
-  readonly statusCode?: number;
+  readonly code:
+    string;
+
+  readonly message:
+    string;
+
+  readonly provider?:
+    AIProviderId;
+
+  readonly retryable:
+    boolean;
+
+  readonly statusCode?:
+    number;
 }
 
 export interface AIExecutionSuccess {
-  readonly success: true;
-  readonly response: AIExecutionResponse;
+  readonly success:
+    true;
+
+  readonly response:
+    AIExecutionResponse;
 }
 
 export interface AIExecutionFailure {
-  readonly success: false;
-  readonly error: AIProviderError;
+  readonly success:
+    false;
+
+  readonly error:
+    AIProviderError;
 }
 
 export type AIExecutionResult =
@@ -99,25 +167,17 @@ export type AIExecutionResult =
   | AIExecutionFailure;
 
 export interface AIProvider {
-  readonly id: AIProviderId;
+  readonly id:
+    AIProviderId;
 
-  /**
-   * Describes the runtime category.
-   *
-   * External:
-   * Third-party AI APIs such as OpenAI, Anthropic,
-   * Google, or Groq.
-   *
-   * Self-hosted:
-   * Models operated on infrastructure controlled
-   * by Mass Diamond or its infrastructure partners.
-   *
-   * Native:
-   * Future Mass Diamond-owned AI runtimes/models.
-   */
-  readonly runtimeKind: AIRuntimeKind;
+  readonly runtimeKind:
+    AIRuntimeKind;
 
   execute(
-    request: AIExecutionRequest,
+    request:
+      AIExecutionRequest,
+
+    context?:
+      AIExecutionContext,
   ): Promise<AIExecutionResult>;
 }
