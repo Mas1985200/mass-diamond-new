@@ -16,10 +16,11 @@
 // - Resolve the active execution policy.
 // - Resolve available runtime adapters.
 // - Build an ordered execution plan.
+// - Reject an unusable execution plan.
 // - Delegate execution to the runtime engine.
 // - Preserve provider/runtime neutrality.
 //
-// Does NOT handle:
+// This layer does NOT handle:
 // - Authentication
 // - Persistence
 // - Billing
@@ -91,12 +92,14 @@ export class DefaultAIRuntimeCoordinator
     dependencies:
       AIRuntimeCoordinatorDependencies,
   ) {
-    this.dependencies = dependencies;
+    this.dependencies =
+      dependencies;
   }
 
   public async execute(
     request: AIExecutionRequest,
-    options: AIRuntimeExecutionOptions = {},
+    options:
+      AIRuntimeExecutionOptions = {},
   ): Promise<AIExecutionEngineResult> {
     const policy =
       this.dependencies.policyResolver.resolve();
@@ -133,7 +136,10 @@ export class DefaultAIRuntimeCoordinator
         resolution.providers,
       );
 
-    if (plan.targets.length === 0) {
+    if (
+      plan.targets.length ===
+      0
+    ) {
       return {
         result: {
           success: false,
@@ -142,7 +148,9 @@ export class DefaultAIRuntimeCoordinator
               "AI_RUNTIME_PLAN_EMPTY",
 
             message:
-              "No executable AI runtime target is available.",
+              this.getEmptyPlanMessage(
+                plan.unavailableTargets,
+              ),
 
             retryable: false,
           },
@@ -167,17 +175,58 @@ export class DefaultAIRuntimeCoordinator
   ): string {
     switch (reason) {
       case "NO_PROVIDER_CONFIGURED":
-        return "No AI runtime is configured.";
+        return (
+          "No AI runtime is configured."
+        );
 
       case "PROVIDER_NOT_REGISTERED":
-        return "The configured AI runtime is not registered.";
+        return (
+          "The configured AI runtime is not registered."
+        );
 
       case "INVALID_PROVIDER_CONFIG":
-        return "The AI runtime configuration is invalid.";
+        return (
+          "The AI runtime configuration is invalid."
+        );
 
       default:
-        return "AI runtime resolution failed.";
+        return (
+          "AI runtime resolution failed."
+        );
     }
+  }
+
+  private getEmptyPlanMessage(
+    unavailableTargets:
+      readonly {
+        readonly providerId: string;
+        readonly model: string;
+        readonly priority: number;
+        readonly isPrimary: boolean;
+        readonly reason:
+          | "PROVIDER_NOT_REGISTERED";
+      }[],
+  ): string {
+    if (
+      unavailableTargets.length ===
+      0
+    ) {
+      return (
+        "No AI execution target is available."
+      );
+    }
+
+    const providers =
+      unavailableTargets
+        .map(
+          (target) =>
+            `${target.providerId}/${target.model}`,
+        )
+        .join(", ");
+
+    return (
+      `No registered AI runtime is available for the execution plan: ${providers}.`
+    );
   }
 }
 
