@@ -20,11 +20,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import {
   aiRuntimeCoordinator,
-} from "../_shared/ai/aiRuntimeCoordinator";
+} from "../_shared/ai/aiRuntimeCoordinator.ts";
 
 import type {
   AIExecutionRequest,
-} from "../_shared/ai/types";
+} from "../_shared/ai/types.ts";
 
 interface ChatRequest {
   readonly message?: unknown;
