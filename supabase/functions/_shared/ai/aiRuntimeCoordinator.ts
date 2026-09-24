@@ -32,28 +32,28 @@
 
 import type {
   AIExecutionRequest,
-} from "./types";
+} from "./types.ts";
 
 import {
   aiExecutionPolicyResolver,
   type AIExecutionPolicyResolver,
-} from "./aiExecutionPolicy";
+} from "./aiExecutionPolicy.ts";
 
 import {
   aiProviderResolver,
   type AIProviderResolver,
-} from "./providerResolver";
+} from "./providerResolver.ts";
 
 import {
   aiExecutionPlanBuilder,
   type AIExecutionPlanBuilder,
-} from "./aiExecutionPlan";
+} from "./aiExecutionPlan.ts";
 
 import {
   aiExecutionEngine,
   type AIExecutionEngine,
   type AIExecutionEngineResult,
-} from "./aiExecutionEngine";
+} from "./aiExecutionEngine.ts";
 
 export interface AIRuntimeCoordinatorDependencies {
   readonly policyResolver:
