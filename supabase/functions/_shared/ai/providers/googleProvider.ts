@@ -396,7 +396,11 @@ export class GoogleAIProvider
 
   private extractUsage(
     data: unknown,
-  ) {
+  ): {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  } | undefined {
     if (
       typeof data !==
         "object" ||
@@ -432,21 +436,47 @@ export class GoogleAIProvider
           unknown;
       };
 
+    const inputTokens =
+      this.toNumber(
+        value.promptTokenCount,
+      );
+
+    const outputTokens =
+      this.toNumber(
+        value.candidatesTokenCount,
+      );
+
+    const totalTokens =
+      this.toNumber(
+        value.totalTokenCount,
+      );
+
+    if (
+      inputTokens === undefined &&
+      outputTokens === undefined &&
+      totalTokens === undefined
+    ) {
+      return undefined;
+    }
+
     return {
-      inputTokens:
-        this.toNumber(
-          value.promptTokenCount,
-        ),
+      ...(inputTokens !== undefined
+        ? {
+            inputTokens,
+          }
+        : {}),
 
-      outputTokens:
-        this.toNumber(
-          value.candidatesTokenCount,
-        ),
+      ...(outputTokens !== undefined
+        ? {
+            outputTokens,
+          }
+        : {}),
 
-      totalTokens:
-        this.toNumber(
-          value.totalTokenCount,
-        ),
+      ...(totalTokens !== undefined
+        ? {
+            totalTokens,
+          }
+        : {}),
     };
   }
 
@@ -501,8 +531,10 @@ export class GoogleAIProvider
       const text =
         await response.text();
 
-      return text.trim() ||
-        undefined;
+      return (
+        text.trim() ||
+        undefined
+      );
     } catch {
       return undefined;
     }
@@ -511,11 +543,13 @@ export class GoogleAIProvider
   private toNumber(
     value: unknown,
   ): number | undefined {
-    return typeof value ===
-      "number" &&
+    return (
+      typeof value ===
+        "number" &&
       Number.isFinite(value)
-      ? value
-      : undefined;
+        ? value
+        : undefined
+    );
   }
 
   private isAbortError(
@@ -536,8 +570,10 @@ export class GoogleAIProvider
         }
       ).name;
 
-    return name ===
-      "AbortError";
+    return (
+      name ===
+      "AbortError"
+    );
   }
 
   private getErrorMessage(
