@@ -28,17 +28,17 @@
 import {
   getAIProviderConfiguration,
   type AIProviderConfiguration,
-} from "./providerConfig";
+} from "./providerConfig.ts";
 
 import {
   aiProviderRegistry,
   type AIProviderRegistry,
-} from "./providerRegistry";
+} from "./providerRegistry.ts";
 
 import type {
   AIProvider,
   AIProviderId,
-} from "./types";
+} from "./types.ts";
 
 export interface AIProviderResolutionSuccess {
   readonly resolved: true;
