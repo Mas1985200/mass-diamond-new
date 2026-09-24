@@ -456,4 +456,111 @@ export class GoogleAIProvider
     string | undefined
   > {
     try {
-      const data
+      const data =
+        await response.json();
+
+      if (
+        typeof data ===
+          "object" &&
+        data !== null
+      ) {
+        const error =
+          (
+            data as {
+              error?: unknown;
+            }
+          ).error;
+
+        if (
+          typeof error ===
+            "object" &&
+          error !== null
+        ) {
+          const message =
+            (
+              error as {
+                message?: unknown;
+              }
+            ).message;
+
+          if (
+            typeof message ===
+              "string" &&
+            message.trim()
+              .length > 0
+          ) {
+            return message.trim();
+          }
+        }
+      }
+    } catch {
+      // Fall through to text parsing.
+    }
+
+    try {
+      const text =
+        await response.text();
+
+      return text.trim() ||
+        undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private toNumber(
+    value: unknown,
+  ): number | undefined {
+    return typeof value ===
+      "number" &&
+      Number.isFinite(value)
+      ? value
+      : undefined;
+  }
+
+  private isAbortError(
+    error: unknown,
+  ): boolean {
+    if (
+      typeof error !==
+        "object" ||
+      error === null
+    ) {
+      return false;
+    }
+
+    const name =
+      (
+        error as {
+          name?: unknown;
+        }
+      ).name;
+
+    return name ===
+      "AbortError";
+  }
+
+  private getErrorMessage(
+    error: unknown,
+  ): string {
+    if (
+      error instanceof Error
+    ) {
+      return (
+        error.message ||
+        "Google AI request failed."
+      );
+    }
+
+    if (
+      typeof error ===
+        "string"
+    ) {
+      return error;
+    }
+
+    return (
+      "Google AI request failed."
+    );
+  }
+}
