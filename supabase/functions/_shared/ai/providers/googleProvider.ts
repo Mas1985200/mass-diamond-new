@@ -23,9 +23,9 @@ import type {
   AIExecutionRequest,
   AIExecutionResult,
   AIProvider,
-} from "../types";
+} from "../types.ts";
 
-export class GoogleProvider
+export class GoogleAIProvider
   implements AIProvider
 {
   public readonly id =
@@ -456,90 +456,4 @@ export class GoogleProvider
     string | undefined
   > {
     try {
-      const data =
-        await response.json();
-
-      if (
-        typeof data !==
-          "object" ||
-        data === null
-      ) {
-        return undefined;
-      }
-
-      const error =
-        (
-          data as {
-            error?: unknown;
-          }
-        ).error;
-
-      if (
-        typeof error ===
-          "object" &&
-        error !== null
-      ) {
-        const message =
-          (
-            error as {
-              message?: unknown;
-            }
-          ).message;
-
-        if (
-          typeof message ===
-          "string"
-        ) {
-          return message;
-        }
-      }
-
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  private toNumber(
-    value: unknown,
-  ): number | undefined {
-    return typeof value ===
-      "number" &&
-      Number.isFinite(
-        value,
-      )
-      ? value
-      : undefined;
-  }
-
-  private isAbortError(
-    error: unknown,
-  ): boolean {
-    if (
-      typeof error !==
-        "object" ||
-      error === null
-    ) {
-      return false;
-    }
-
-    const candidate =
-      error as {
-        name?: unknown;
-      };
-
-    return (
-      candidate.name ===
-      "AbortError"
-    );
-  }
-
-  private getErrorMessage(
-    error: unknown,
-  ): string {
-    return error instanceof
-      Error
-      ? error.message
-      : "Unknown Google AI network error.";
-  }
-}
+      const data
