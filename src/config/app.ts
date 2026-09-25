@@ -1,5 +1,4 @@
 import type {
-  AppDirection,
   AppMetadata,
   LocaleConfig,
   SupportedLocale,
