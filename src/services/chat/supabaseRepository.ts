@@ -236,7 +236,7 @@ export class SupabaseChatRepository
       pageRows.at(-1);
 
     return {
-      items: pageRows.map(
+      conversations: pageRows.map(
         mapConversation,
       ),
       nextCursor:
@@ -254,7 +254,7 @@ export class SupabaseChatRepository
     updates: {
       readonly title?: string;
     },
-  ): Promise<ChatConversation | null> {
+  ): Promise<ChatConversation> {
     const {
       data,
       error,
@@ -272,7 +272,7 @@ export class SupabaseChatRepository
       .select(
         "id,user_id,title,created_at,updated_at",
       )
-      .maybeSingle();
+      .single();
 
     if (error) {
       throw createRepositoryError(
@@ -281,11 +281,9 @@ export class SupabaseChatRepository
       );
     }
 
-    return data
-      ? mapConversation(
-          data as ConversationRow,
-        )
-      : null;
+    return mapConversation(
+      data as ConversationRow,
+    );
   }
 
   public async deleteConversation(
@@ -480,7 +478,9 @@ export class SupabaseChatRepository
       pageRows.at(-1);
 
     return {
-      items: pageRows.map(mapMessage),
+      messages: pageRows.map(
+        mapMessage,
+      ),
       nextCursor:
         hasNextPage && lastRow
           ? encodeCursor(
@@ -495,7 +495,7 @@ export class SupabaseChatRepository
     conversationId: string,
     messageId: string,
     updates: UpdateChatMessageInput,
-  ): Promise<ChatMessage | null> {
+  ): Promise<ChatMessage> {
     const {
       data,
       error,
@@ -550,7 +550,7 @@ export class SupabaseChatRepository
           "updated_at",
         ].join(","),
       )
-      .maybeSingle();
+      .single();
 
     if (error) {
       throw createRepositoryError(
@@ -559,11 +559,9 @@ export class SupabaseChatRepository
       );
     }
 
-    return data
-      ? mapMessage(
-          data as MessageRow,
-        )
-      : null;
+    return mapMessage(
+      data as MessageRow,
+    );
   }
 
   public async deleteMessage(
