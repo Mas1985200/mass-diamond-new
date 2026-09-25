@@ -14,7 +14,9 @@ function cloneConversation(
 ): ChatConversation {
   return {
     ...conversation,
-    messages: [...conversation.messages],
+    messages: conversation.messages.map(
+      cloneMessage,
+    ),
   };
 }
 
@@ -44,12 +46,15 @@ export class MemoryChatStore
     return {
       activeConversationId:
         this.activeConversationId,
+
       conversations: Array.from(
         this.conversations.values(),
         cloneConversation,
       ),
+
       isSubmitting:
         this.isSubmitting,
+
       error: this.error,
     };
   }
@@ -91,6 +96,43 @@ export class MemoryChatStore
       : null;
   }
 
+  public setConversations(
+    conversations: readonly ChatConversation[],
+  ): void {
+    const previousActiveId =
+      this.activeConversationId;
+
+    this.conversations.clear();
+
+    for (const conversation of conversations) {
+      this.conversations.set(
+        conversation.id,
+        cloneConversation(conversation),
+      );
+    }
+
+    if (
+      previousActiveId !== null &&
+      this.conversations.has(
+        previousActiveId,
+      )
+    ) {
+      this.activeConversationId =
+        previousActiveId;
+
+      return;
+    }
+
+    const firstConversation =
+      this.conversations.values().next()
+        .value as
+        | ChatConversation
+        | undefined;
+
+    this.activeConversationId =
+      firstConversation?.id ?? null;
+  }
+
   public setConversation(
     conversation: ChatConversation,
   ): void {
@@ -120,21 +162,25 @@ export class MemoryChatStore
       this.setConversation(
         conversation,
       );
+
       return;
     }
+
+    const nextMessages =
+      conversation.messages.length > 0
+        ? conversation.messages.map(
+            cloneMessage,
+          )
+        : existing.messages.map(
+            cloneMessage,
+          );
 
     this.conversations.set(
       conversation.id,
       {
         ...existing,
         ...conversation,
-        messages:
-          conversation.messages
-            .length > 0
-            ? [
-                ...conversation.messages,
-              ]
-            : [...existing.messages],
+        messages: nextMessages,
       },
     );
   }
@@ -219,9 +265,10 @@ export class MemoryChatStore
           item.id === message.id,
       );
 
-    const nextMessages = [
-      ...conversation.messages,
-    ];
+    const nextMessages =
+      conversation.messages.map(
+        cloneMessage,
+      );
 
     if (messageIndex === -1) {
       nextMessages.push(
@@ -262,10 +309,13 @@ export class MemoryChatStore
       {
         ...conversation,
         messages:
-          conversation.messages.filter(
-            (message) =>
-              message.id !== messageId,
-          ),
+          conversation.messages
+            .filter(
+              (message) =>
+                message.id !==
+                messageId,
+            )
+            .map(cloneMessage),
       },
     );
   }
@@ -289,6 +339,7 @@ export class MemoryChatStore
         this.conversations.values(),
         cloneConversation,
       ),
+
       activeConversationId:
         this.activeConversationId,
     };
@@ -296,9 +347,12 @@ export class MemoryChatStore
 
   public reset(): void {
     this.conversations.clear();
+
     this.activeConversationId =
       null;
+
     this.isSubmitting = false;
+
     this.error = null;
   }
 }
