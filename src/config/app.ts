@@ -1,4 +1,12 @@
 import type {
+  AppDirection,
+  AppMetadata,
+  LocaleConfig,
+  SupportedLocale,
+} from "../types/app";
+
+export type {
+  AppDirection,
   AppMetadata,
   LocaleConfig,
   SupportedLocale,
