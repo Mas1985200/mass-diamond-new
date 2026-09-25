@@ -33,5 +33,19 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build frontend
-        run: npm run build
+      - name: TypeScript diagnostics
+        shell: bash
+        run: |
+          set +e
+          npm run build > build-output.log 2>&1
+          BUILD_EXIT_CODE=$?
+
+          echo "## Frontend Build Diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          cat build-output.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          cat build-output.log
+
+          exit $BUILD_EXIT_CODE
