@@ -6,6 +6,7 @@ export {
 } from "./app";
 
 export type {
+  AppDirection,
   AppMetadata,
   LocaleConfig,
   SupportedLocale,
