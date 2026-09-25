@@ -37,6 +37,108 @@ interface MessageRow {
   readonly updated_at: string;
 }
 
+function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null
+  );
+}
+
+function isStringOrNull(
+  value: unknown,
+): value is string | null {
+  return (
+    typeof value === "string" ||
+    value === null
+  );
+}
+
+function isChatMessageRole(
+  value: unknown,
+): value is ChatMessage["role"] {
+  return (
+    value === "user" ||
+    value === "assistant" ||
+    value === "system"
+  );
+}
+
+function isChatMessageStatus(
+  value: unknown,
+): value is ChatMessage["status"] {
+  return (
+    value === "pending" ||
+    value === "sent" ||
+    value === "failed"
+  );
+}
+
+function toConversationRow(
+  value: unknown,
+): ConversationRow {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.user_id !== "string" ||
+    !isStringOrNull(value.title) ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    throw new Error(
+      "Chat repository received an invalid conversation row.",
+    );
+  }
+
+  return {
+    id: value.id,
+    user_id: value.user_id,
+    title: value.title,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  };
+}
+
+function toMessageRow(
+  value: unknown,
+): MessageRow {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    typeof value.conversation_id !== "string" ||
+    typeof value.user_id !== "string" ||
+    !isChatMessageRole(value.role) ||
+    typeof value.content !== "string" ||
+    !isChatMessageStatus(value.status) ||
+    !isStringOrNull(value.capability_id) ||
+    !isStringOrNull(value.error_code) ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    throw new Error(
+      "Chat repository received an invalid message row.",
+    );
+  }
+
+  return {
+    id: value.id,
+    conversation_id:
+      value.conversation_id,
+    user_id: value.user_id,
+    role: value.role,
+    content: value.content,
+    status: value.status,
+    attachments: value.attachments,
+    capability_id:
+      value.capability_id,
+    error_code:
+      value.error_code,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  };
+}
+
 function mapConversation(
   row: ConversationRow,
 ): ChatConversation {
@@ -113,6 +215,20 @@ function decodeCursor(
   return decodeURIComponent(value);
 }
 
+const MESSAGE_SELECT_COLUMNS = [
+  "id",
+  "conversation_id",
+  "user_id",
+  "role",
+  "content",
+  "status",
+  "attachments",
+  "capability_id",
+  "error_code",
+  "created_at",
+  "updated_at",
+].join(",");
+
 export class SupabaseChatRepository
   implements ChatRepository
 {
@@ -144,7 +260,7 @@ export class SupabaseChatRepository
     }
 
     return mapConversation(
-      data as ConversationRow,
+      toConversationRow(data),
     );
   }
 
@@ -173,7 +289,7 @@ export class SupabaseChatRepository
 
     return data
       ? mapConversation(
-          data as ConversationRow,
+          toConversationRow(data),
         )
       : null;
   }
@@ -222,8 +338,9 @@ export class SupabaseChatRepository
       );
     }
 
-    const rows =
-      (data ?? []) as ConversationRow[];
+    const rows = Array.isArray(data)
+      ? data.map(toConversationRow)
+      : [];
 
     const hasNextPage =
       rows.length > limit;
@@ -282,7 +399,7 @@ export class SupabaseChatRepository
     }
 
     return mapConversation(
-      data as ConversationRow,
+      toConversationRow(data),
     );
   }
 
@@ -328,19 +445,7 @@ export class SupabaseChatRepository
           input.capabilityId ?? null,
       })
       .select(
-        [
-          "id",
-          "conversation_id",
-          "user_id",
-          "role",
-          "content",
-          "status",
-          "attachments",
-          "capability_id",
-          "error_code",
-          "created_at",
-          "updated_at",
-        ].join(","),
+        MESSAGE_SELECT_COLUMNS,
       )
       .single();
 
@@ -352,7 +457,7 @@ export class SupabaseChatRepository
     }
 
     return mapMessage(
-      data as MessageRow,
+      toMessageRow(data),
     );
   }
 
@@ -367,19 +472,7 @@ export class SupabaseChatRepository
     } = await supabase
       .from("chat_messages")
       .select(
-        [
-          "id",
-          "conversation_id",
-          "user_id",
-          "role",
-          "content",
-          "status",
-          "attachments",
-          "capability_id",
-          "error_code",
-          "created_at",
-          "updated_at",
-        ].join(","),
+        MESSAGE_SELECT_COLUMNS,
       )
       .eq("id", messageId)
       .eq(
@@ -398,7 +491,7 @@ export class SupabaseChatRepository
 
     return data
       ? mapMessage(
-          data as MessageRow,
+          toMessageRow(data),
         )
       : null;
   }
@@ -415,19 +508,7 @@ export class SupabaseChatRepository
     let request = supabase
       .from("chat_messages")
       .select(
-        [
-          "id",
-          "conversation_id",
-          "user_id",
-          "role",
-          "content",
-          "status",
-          "attachments",
-          "capability_id",
-          "error_code",
-          "created_at",
-          "updated_at",
-        ].join(","),
+        MESSAGE_SELECT_COLUMNS,
       )
       .eq(
         "conversation_id",
@@ -464,8 +545,9 @@ export class SupabaseChatRepository
       );
     }
 
-    const rows =
-      (data ?? []) as MessageRow[];
+    const rows = Array.isArray(data)
+      ? data.map(toMessageRow)
+      : [];
 
     const hasNextPage =
       rows.length > limit;
@@ -536,19 +618,7 @@ export class SupabaseChatRepository
       )
       .eq("user_id", userId)
       .select(
-        [
-          "id",
-          "conversation_id",
-          "user_id",
-          "role",
-          "content",
-          "status",
-          "attachments",
-          "capability_id",
-          "error_code",
-          "created_at",
-          "updated_at",
-        ].join(","),
+        MESSAGE_SELECT_COLUMNS,
       )
       .single();
 
@@ -560,7 +630,7 @@ export class SupabaseChatRepository
     }
 
     return mapMessage(
-      data as MessageRow,
+      toMessageRow(data),
     );
   }
 
