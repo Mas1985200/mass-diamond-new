@@ -47,6 +47,7 @@ export function useChat(): UseChatResult {
                 "AUTH_REQUIRED",
               message:
                 "Authentication is required to send a chat message.",
+              retryable: false,
             },
           };
         }
